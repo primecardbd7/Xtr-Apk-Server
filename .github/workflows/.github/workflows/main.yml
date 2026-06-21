@@ -6,11 +6,13 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # রিলিজ করার জন্য পারমিশন
     steps:
       - name: Checkout Template
         uses: actions/checkout@v3
         with:
-          repository: 'braver-tool/android-webview-template' # এটি একটি বেস টেমপ্লেট
+          repository: 'braver-tool/android-webview-template'
 
       - name: Inject User Code
         run: |
@@ -31,8 +33,19 @@ jobs:
       - name: Build APK
         run: ./gradlew assembleDebug
 
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v3
+      - name: Delete Old Release
+        run: |
+          gh release delete latest --yes || true
+          git push --delete origin latest || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release and Upload APK
+        uses: softprops/action-gh-release@v1
         with:
-          name: ${{ github.event.client_payload.app_name }}-v${{ github.event.client_payload.version }}
-          path: app/build/outputs/apk/debug/app-debug.apk
+          tag_name: latest
+          files: app/build/outputs/apk/debug/app-debug.apk
+          name: "Latest Build: ${{ github.event.client_payload.app_name }}"
+          body: "This APK was built by Xtr Studio for ${{ github.event.client_payload.app_name }}."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

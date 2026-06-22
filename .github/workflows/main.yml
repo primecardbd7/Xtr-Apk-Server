@@ -9,40 +9,45 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Install Cordova Framework
-        run: npm install -g cordova
-
-      - name: Setup Java 11
+      - name: Setup Java 17 (Latest Android System)
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
-          java-version: '11'
+          java-version: '17'
 
-      - name: Create Fresh Android App
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install Cordova (App Builder)
+        run: npm install -g cordova
+
+      - name: Create Fresh App
         run: |
           cordova create xtrapp "${{ github.event.client_payload.package_name }}" "${{ github.event.client_payload.app_name }}"
           cd xtrapp
-          cordova platform add android
+          cordova platform add android@12.0.0
 
       - name: Inject User HTML Code Safely
-        run: |
-          node -e "const fs = require('fs'); fs.writeFileSync('xtrapp/www/index.html', process.env.HTML_CODE);"
         env:
-          HTML_CODE: ${{ github.event.client_payload.html_code }}
+          HTML_DATA: ${{ github.event.client_payload.html_code }}
+        run: |
+          python3 -c "import os; open('xtrapp/www/index.html', 'w', encoding='utf-8').write(os.environ['HTML_DATA'])"
 
       - name: Compile and Build APK
         run: |
           cd xtrapp
-          cordova build android
+          cordova build android --debug
 
-      - name: Delete Old App File
+      - name: Clear Old Server Files
         run: |
           gh release delete latest --yes || true
           git push --delete origin latest || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload New APK for Download
+      - name: Upload Finished APK for Download
         uses: softprops/action-gh-release@v1
         with:
           tag_name: latest

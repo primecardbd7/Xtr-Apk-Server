@@ -9,25 +9,25 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Setup Java 17 (Latest Android System)
-        uses: actions/setup-java@v3
+      - name: Setup Java 17 (Force Java 17 for Gradle)
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
-      - name: Install Cordova (App Builder)
+      - name: Install Cordova App Builder
         run: npm install -g cordova
 
-      - name: Create Fresh App
+      - name: Create Fresh Android App
         run: |
           cordova create xtrapp "${{ github.event.client_payload.package_name }}" "${{ github.event.client_payload.app_name }}"
           cd xtrapp
-          cordova platform add android@12.0.0
+          cordova platform add android@13.0.0
 
       - name: Inject User HTML Code Safely
         env:
@@ -40,15 +40,15 @@ jobs:
           cd xtrapp
           cordova build android --debug
 
-      - name: Clear Old Server Files
+      - name: Delete Old Server Files
         run: |
           gh release delete latest --yes || true
           git push --delete origin latest || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Finished APK for Download
-        uses: softprops/action-gh-release@v1
+      - name: Upload Final APK for Download
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
           files: xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk

@@ -9,18 +9,18 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Setup Java 17 (Force Java 17 for Gradle)
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install Cordova App Builder
+      - name: Install Cordova
         run: npm install -g cordova
 
       - name: Create Fresh Android App
@@ -35,6 +35,22 @@ jobs:
         run: |
           python3 -c "import os; open('xtrapp/www/index.html', 'w', encoding='utf-8').write(os.environ['HTML_DATA'])"
 
+      - name: Process Custom App Icon (If available)
+        env:
+          ICON_DATA: ${{ github.event.client_payload.app_icon }}
+        run: |
+          python3 -c "
+          import os, base64
+          icon_data = os.environ.get('ICON_DATA', '')
+          if icon_data:
+              with open('xtrapp/res/icon.png', 'wb') as f:
+                  f.write(base64.b64decode(icon_data))
+              # Cordova config.xml আপডেট করে আইকন সেট করা হচ্ছে
+              config = open('xtrapp/config.xml').read()
+              config = config.replace('</widget>', '    <icon src=\"res/icon.png\" />\n</widget>')
+              open('xtrapp/config.xml', 'w').write(config)
+          "
+
       - name: Compile and Build APK
         run: |
           cd xtrapp
@@ -47,7 +63,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Final APK for Download
+      - name: Upload Final APK
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest

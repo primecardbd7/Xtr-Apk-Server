@@ -27,7 +27,6 @@ jobs:
         run: |
           cordova create xtrapp "${{ github.event.client_payload.package_name }}" "${{ github.event.client_payload.app_name }}"
           cd xtrapp
-          # লেটেস্ট অ্যান্ড্রয়েড প্ল্যাটফর্ম অ্যাড করা হচ্ছে (পুরনো স্প্ল্যাশ প্লাগিন বাতিল)
           cordova platform add android@13.0.0
 
       - name: Inject User HTML Code Safely
@@ -36,10 +35,12 @@ jobs:
         run: |
           python3 -c "import os; open('xtrapp/www/index.html', 'w', encoding='utf-8').write(os.environ['HTML_DATA'])"
 
-      - name: Process App Icon & Splash Screen
+      - name: Process Icon, Splash & Permissions
         env:
           ICON_DATA: ${{ github.event.client_payload.app_icon }}
           SPLASH_DATA: ${{ github.event.client_payload.splash_screen }}
+          USE_CAMERA: ${{ github.event.client_payload.use_camera }}
+          USE_MIC: ${{ github.event.client_payload.use_mic }}
         run: |
           python3 -c "
           import os, base64
@@ -47,8 +48,13 @@ jobs:
           
           icon_data = os.environ.get('ICON_DATA', '').strip()
           splash_data = os.environ.get('SPLASH_DATA', '').strip()
+          use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
+          use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
           
           config = open('xtrapp/config.xml').read()
+          
+          # XML Namespace যোগ করা (পারমিশনের জন্য জরুরি)
+          config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
           if icon_data:
               with open('xtrapp/res/icon.png', 'wb') as f:
@@ -58,7 +64,6 @@ jobs:
           if splash_data:
               with open('xtrapp/res/splash.png', 'wb') as f:
                   f.write(base64.b64decode(splash_data))
-              # 🚨 Android 12+ এর নতুন স্প্ল্যাশ স্ক্রিন সিস্টেম
               splash_xml = '''
               <preference name=\"SplashScreenDelay\" value=\"3000\" />
               <preference name=\"FadeSplashScreenDuration\" value=\"1000\" />
@@ -66,9 +71,18 @@ jobs:
               <preference name=\"AndroidWindowSplashScreenAnimatedIcon\" value=\"res/splash.png\" />
               <preference name=\"AndroidWindowSplashScreenBackground\" value=\"#FFFFFF\" />
               <splash src=\"res/splash.png\" />
-              </widget>
               '''
-              config = config.replace('</widget>', splash_xml)
+              config = config.replace('</widget>', splash_xml + '\n</widget>')
+
+          # 🚨 পারমিশন যোগ করার ম্যাজিক কোড
+          perm_xml = '<platform name=\"android\">\n'
+          if use_camera:
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n  </config-file>\n'
+          if use_mic:
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />\n    <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\" />\n  </config-file>\n'
+          perm_xml += '</platform>'
+
+          config = config.replace('</widget>', perm_xml + '\n</widget>')
 
           open('xtrapp/config.xml', 'w').write(config)
           "

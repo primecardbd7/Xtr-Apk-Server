@@ -29,12 +29,10 @@ jobs:
           cd xtrapp
           cordova platform add android@13.0.0
           
-          # 🚨 ম্যাজিক প্লাগিন: পারমিশন পপ-আপ আনার জন্য
+          # পারমিশন পপ-আপ আনার প্লাগিন
           cordova plugin add cordova-plugin-android-permissions
-          cordova plugin add cordova-plugin-camera
-          cordova plugin add cordova-plugin-media-capture
 
-      - name: Inject User HTML Code & Permission Script
+      - name: Inject User HTML & Auto Permission Script
         env:
           HTML_DATA: ${{ github.event.client_payload.html_code }}
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
@@ -46,30 +44,32 @@ jobs:
           use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
 
-          # অ্যাপ ওপেন হওয়ার সাথে সাথে পারমিশন চাওয়ার জাভাস্ক্রিপ্ট
-          permission_script = '''
+          # 🚨 ম্যাজিক ১: cordova.js যোগ করা (যাতে কোড কাজ করে)
+          if 'cordova.js' not in html_data:
+              html_data = '<script src=\"cordova.js\"></script>\n' + html_data
+
+          # 🚨 ম্যাজিক ২: অ্যাপ ওপেন হলেই পপ-আপ আনার স্ক্রিপ্ট
+          permission_script = f'''
           <script>
-          document.addEventListener('deviceready', function() {
+          document.addEventListener('deviceready', function() {{
               var permissions = cordova.plugins.permissions;
               var list = [];
-              if(''' + str(use_camera).lower() + ''') list.push(permissions.CAMERA);
-              if(''' + str(use_mic).lower() + ''') list.push(permissions.RECORD_AUDIO);
+              if ({str(use_camera).lower()}) list.push(permissions.CAMERA);
+              if ({str(use_mic).lower()}) list.push(permissions.RECORD_AUDIO);
               
-              if(list.length > 0) {
-                  permissions.requestPermissions(list, function(status) {
-                      if(!status.hasPermission) console.log('Permission Denied');
-                  }, function() {
-                      console.log('Permission Request Failed');
-                  });
-              }
-          }, false);
+              if (list.length > 0) {{
+                  permissions.requestPermissions(list, function(status) {{
+                      console.log('Permission Success');
+                  }}, function() {{
+                      console.log('Permission Failed');
+                  }});
+              }}
+          }}, false);
           </script>
-          </body>
           '''
 
-          # ইউজারের HTML এর ভেতরে স্ক্রিপ্টটি ঢুকিয়ে দেওয়া হচ্ছে
           if '</body>' in html_data:
-              html_data = html_data.replace('</body>', permission_script)
+              html_data = html_data.replace('</body>', permission_script + '\n</body>')
           else:
               html_data += permission_script
 
@@ -114,10 +114,10 @@ jobs:
               '''
               config = config.replace('</widget>', splash_xml + '\n</widget>')
 
-          # AndroidManifest.xml এ পারমিশন যোগ করা হচ্ছে
+          # AndroidManifest.xml এ পারমিশন হার্ডকোড করা হচ্ছে
           perm_xml = '<platform name=\"android\">\n'
           if use_camera:
-              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n  </config-file>\n'
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n    <uses-feature android:name=\"android.hardware.camera.autofocus\" android:required=\"false\" />\n  </config-file>\n'
           if use_mic:
               perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />\n    <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\" />\n  </config-file>\n'
           perm_xml += '</platform>'

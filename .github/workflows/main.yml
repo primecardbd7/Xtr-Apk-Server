@@ -28,14 +28,56 @@ jobs:
           cordova create xtrapp "${{ github.event.client_payload.package_name }}" "${{ github.event.client_payload.app_name }}"
           cd xtrapp
           cordova platform add android@13.0.0
+          
+          # 🚨 ম্যাজিক প্লাগিন: পারমিশন পপ-আপ আনার জন্য
+          cordova plugin add cordova-plugin-android-permissions
+          cordova plugin add cordova-plugin-camera
+          cordova plugin add cordova-plugin-media-capture
 
-      - name: Inject User HTML Code Safely
+      - name: Inject User HTML Code & Permission Script
         env:
           HTML_DATA: ${{ github.event.client_payload.html_code }}
+          USE_CAMERA: ${{ github.event.client_payload.use_camera }}
+          USE_MIC: ${{ github.event.client_payload.use_mic }}
         run: |
-          python3 -c "import os; open('xtrapp/www/index.html', 'w', encoding='utf-8').write(os.environ['HTML_DATA'])"
+          python3 -c "
+          import os
+          html_data = os.environ.get('HTML_DATA', '')
+          use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
+          use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
 
-      - name: Process Icon, Splash & Permissions
+          # অ্যাপ ওপেন হওয়ার সাথে সাথে পারমিশন চাওয়ার জাভাস্ক্রিপ্ট
+          permission_script = '''
+          <script>
+          document.addEventListener('deviceready', function() {
+              var permissions = cordova.plugins.permissions;
+              var list = [];
+              if(''' + str(use_camera).lower() + ''') list.push(permissions.CAMERA);
+              if(''' + str(use_mic).lower() + ''') list.push(permissions.RECORD_AUDIO);
+              
+              if(list.length > 0) {
+                  permissions.requestPermissions(list, function(status) {
+                      if(!status.hasPermission) console.log('Permission Denied');
+                  }, function() {
+                      console.log('Permission Request Failed');
+                  });
+              }
+          }, false);
+          </script>
+          </body>
+          '''
+
+          # ইউজারের HTML এর ভেতরে স্ক্রিপ্টটি ঢুকিয়ে দেওয়া হচ্ছে
+          if '</body>' in html_data:
+              html_data = html_data.replace('</body>', permission_script)
+          else:
+              html_data += permission_script
+
+          with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
+              f.write(html_data)
+          "
+
+      - name: Process Icon, Splash & Manifest Permissions
         env:
           ICON_DATA: ${{ github.event.client_payload.app_icon }}
           SPLASH_DATA: ${{ github.event.client_payload.splash_screen }}
@@ -52,8 +94,6 @@ jobs:
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
           
           config = open('xtrapp/config.xml').read()
-          
-          # XML Namespace যোগ করা (পারমিশনের জন্য জরুরি)
           config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
           if icon_data:
@@ -74,7 +114,7 @@ jobs:
               '''
               config = config.replace('</widget>', splash_xml + '\n</widget>')
 
-          # 🚨 পারমিশন যোগ করার ম্যাজিক কোড
+          # AndroidManifest.xml এ পারমিশন যোগ করা হচ্ছে
           perm_xml = '<platform name=\"android\">\n'
           if use_camera:
               perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n  </config-file>\n'
@@ -83,7 +123,6 @@ jobs:
           perm_xml += '</platform>'
 
           config = config.replace('</widget>', perm_xml + '\n</widget>')
-
           open('xtrapp/config.xml', 'w').write(config)
           "
 

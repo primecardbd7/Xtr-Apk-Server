@@ -20,16 +20,15 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Cordova & Splash Plugin
-        run: |
-          npm install -g cordova
+      - name: Install Cordova
+        run: npm install -g cordova
 
       - name: Create Fresh Android App
         run: |
           cordova create xtrapp "${{ github.event.client_payload.package_name }}" "${{ github.event.client_payload.app_name }}"
           cd xtrapp
+          # লেটেস্ট অ্যান্ড্রয়েড প্ল্যাটফর্ম অ্যাড করা হচ্ছে (পুরনো স্প্ল্যাশ প্লাগিন বাতিল)
           cordova platform add android@13.0.0
-          cordova plugin add cordova-plugin-splashscreen
 
       - name: Inject User HTML Code Safely
         env:
@@ -37,7 +36,7 @@ jobs:
         run: |
           python3 -c "import os; open('xtrapp/www/index.html', 'w', encoding='utf-8').write(os.environ['HTML_DATA'])"
 
-      - name: Process Custom App Icon & Splash Screen
+      - name: Process App Icon & Splash Screen
         env:
           ICON_DATA: ${{ github.event.client_payload.app_icon }}
           SPLASH_DATA: ${{ github.event.client_payload.splash_screen }}
@@ -57,13 +56,16 @@ jobs:
               config = config.replace('</widget>', '    <icon src=\"res/icon.png\" />\n</widget>')
 
           if splash_data:
-              with open('xtrapp/res/splash.jpg', 'wb') as f:
+              with open('xtrapp/res/splash.png', 'wb') as f:
                   f.write(base64.b64decode(splash_data))
+              # 🚨 Android 12+ এর নতুন স্প্ল্যাশ স্ক্রিন সিস্টেম
               splash_xml = '''
-              <preference name=\"SplashScreen\" value=\"screen\" />
               <preference name=\"SplashScreenDelay\" value=\"3000\" />
-              <preference name=\"SplashMaintainAspectRatio\" value=\"true\" />
-              <splash src=\"res/splash.jpg\" />
+              <preference name=\"FadeSplashScreenDuration\" value=\"1000\" />
+              <preference name=\"ShowSplashScreenSpinner\" value=\"false\" />
+              <preference name=\"AndroidWindowSplashScreenAnimatedIcon\" value=\"res/splash.png\" />
+              <preference name=\"AndroidWindowSplashScreenBackground\" value=\"#FFFFFF\" />
+              <splash src=\"res/splash.png\" />
               </widget>
               '''
               config = config.replace('</widget>', splash_xml)

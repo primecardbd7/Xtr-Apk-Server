@@ -20,14 +20,16 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Cordova
-        run: npm install -g cordova
+      - name: Install Cordova & Splash Plugin
+        run: |
+          npm install -g cordova
 
       - name: Create Fresh Android App
         run: |
           cordova create xtrapp "${{ github.event.client_payload.package_name }}" "${{ github.event.client_payload.app_name }}"
           cd xtrapp
           cordova platform add android@13.0.0
+          cordova plugin add cordova-plugin-splashscreen
 
       - name: Inject User HTML Code Safely
         env:
@@ -35,21 +37,38 @@ jobs:
         run: |
           python3 -c "import os; open('xtrapp/www/index.html', 'w', encoding='utf-8').write(os.environ['HTML_DATA'])"
 
-      - name: Process Custom App Icon (If available)
+      - name: Process Custom App Icon & Splash Screen
         env:
           ICON_DATA: ${{ github.event.client_payload.app_icon }}
+          SPLASH_DATA: ${{ github.event.client_payload.splash_screen }}
         run: |
           python3 -c "
           import os, base64
+          os.makedirs('xtrapp/res', exist_ok=True)
+          
           icon_data = os.environ.get('ICON_DATA', '').strip()
+          splash_data = os.environ.get('SPLASH_DATA', '').strip()
+          
+          config = open('xtrapp/config.xml').read()
+
           if icon_data:
-              # 🚨 ম্যাজিক ফিক্স: ছবি সেভ করার জন্য আগে ফোল্ডার বানানো হচ্ছে
-              os.makedirs('xtrapp/res', exist_ok=True)
               with open('xtrapp/res/icon.png', 'wb') as f:
                   f.write(base64.b64decode(icon_data))
-              config = open('xtrapp/config.xml').read()
               config = config.replace('</widget>', '    <icon src=\"res/icon.png\" />\n</widget>')
-              open('xtrapp/config.xml', 'w').write(config)
+
+          if splash_data:
+              with open('xtrapp/res/splash.jpg', 'wb') as f:
+                  f.write(base64.b64decode(splash_data))
+              splash_xml = '''
+              <preference name=\"SplashScreen\" value=\"screen\" />
+              <preference name=\"SplashScreenDelay\" value=\"3000\" />
+              <preference name=\"SplashMaintainAspectRatio\" value=\"true\" />
+              <splash src=\"res/splash.jpg\" />
+              </widget>
+              '''
+              config = config.replace('</widget>', splash_xml)
+
+          open('xtrapp/config.xml', 'w').write(config)
           "
 
       - name: Compile and Build APK

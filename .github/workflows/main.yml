@@ -9,7 +9,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Setup Java 17 (🚨 লেটেস্ট ইঞ্জিনের জন্য)
+      # 🚨 ম্যাজিক ফিক্স: Git রিপোজিটরি সেটআপ করা হলো (যাতে Release Error না আসে)
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -27,7 +31,6 @@ jobs:
         run: |
           cordova create xtrapp "${{ github.event.client_payload.package_name }}" "${{ github.event.client_payload.app_name }}"
           cd xtrapp
-          # 🚨 লেটেস্ট Android ব্যবহার করা হচ্ছে
           cordova platform add android@13.0.0
           cordova plugin add cordova-plugin-android-permissions
 
@@ -93,7 +96,6 @@ jobs:
           if splash_url.startswith('http'):
               try:
                   urllib.request.urlretrieve(splash_url, 'xtrapp/res/splash.png')
-                  # 🚨 Android 12+ এর নতুন ফুল-স্ক্রিন স্প্ল্যাশ স্ক্রিন ম্যাজিক
                   splash_xml = '''
                   <preference name=\"AndroidWindowSplashScreenAnimatedIcon\" value=\"res/splash.png\" />
                   <preference name=\"AndroidWindowSplashScreenBackground\" value=\"#FFFFFF\" />
@@ -108,7 +110,6 @@ jobs:
 
           # 3. Permissions & Theme
           perm_xml = '<platform name=\"android\">\n'
-          # ডিফল্ট থিম সেট করা হচ্ছে যাতে অ্যাকশন বার না থাকে
           perm_xml += '  <edit-config file=\"app/src/main/AndroidManifest.xml\" mode=\"merge\" target=\"/manifest/application\">\n    <application android:theme=\"@android:style/Theme.DeviceDefault.NoActionBar\" />\n  </edit-config>\n'
           
           if use_camera:

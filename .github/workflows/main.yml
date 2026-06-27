@@ -28,8 +28,6 @@ jobs:
           cordova create xtrapp "${{ github.event.client_payload.package_name }}" "${{ github.event.client_payload.app_name }}"
           cd xtrapp
           cordova platform add android@13.0.0
-          
-          # পারমিশন পপ-আপ আনার প্লাগিন
           cordova plugin add cordova-plugin-android-permissions
 
       - name: Inject User HTML & Auto Permission Script
@@ -44,11 +42,9 @@ jobs:
           use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
 
-          # 🚨 ম্যাজিক ১: cordova.js যোগ করা (যাতে কোড কাজ করে)
           if 'cordova.js' not in html_data:
               html_data = '<script src=\"cordova.js\"></script>\n' + html_data
 
-          # 🚨 ম্যাজিক ২: অ্যাপ ওপেন হলেই পপ-আপ আনার স্ক্রিপ্ট
           permission_script = f'''
           <script>
           document.addEventListener('deviceready', function() {{
@@ -77,7 +73,7 @@ jobs:
               f.write(html_data)
           "
 
-      - name: Process Icon, Splash & Manifest Permissions
+      - name: Process Icon, Splash & Permissions
         env:
           ICON_DATA: ${{ github.event.client_payload.app_icon }}
           SPLASH_DATA: ${{ github.event.client_payload.splash_screen }}
@@ -104,17 +100,16 @@ jobs:
           if splash_data:
               with open('xtrapp/res/splash.png', 'wb') as f:
                   f.write(base64.b64decode(splash_data))
+              # 🚨 স্প্ল্যাশ স্ক্রিনের ম্যাজিক: Aspect Ratio বজায় রাখা এবং সাদা ব্যাকগ্রাউন্ড দেওয়া
               splash_xml = '''
               <preference name=\"SplashScreenDelay\" value=\"3000\" />
-              <preference name=\"FadeSplashScreenDuration\" value=\"1000\" />
-              <preference name=\"ShowSplashScreenSpinner\" value=\"false\" />
+              <preference name=\"SplashMaintainAspectRatio\" value=\"true\" />
               <preference name=\"AndroidWindowSplashScreenAnimatedIcon\" value=\"res/splash.png\" />
               <preference name=\"AndroidWindowSplashScreenBackground\" value=\"#FFFFFF\" />
               <splash src=\"res/splash.png\" />
               '''
               config = config.replace('</widget>', splash_xml + '\n</widget>')
 
-          # AndroidManifest.xml এ পারমিশন হার্ডকোড করা হচ্ছে
           perm_xml = '<platform name=\"android\">\n'
           if use_camera:
               perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n    <uses-feature android:name=\"android.hardware.camera.autofocus\" android:required=\"false\" />\n  </config-file>\n'

@@ -55,20 +55,12 @@ jobs:
               if ({str(use_mic).lower()}) list.push(permissions.RECORD_AUDIO);
               
               if (list.length > 0) {{
-                  permissions.requestPermissions(list, function(status) {{
-                      console.log('Permission Success');
-                  }}, function() {{
-                      console.log('Permission Failed');
-                  }});
+                  permissions.requestPermissions(list, function() {{}}, function() {{}});
               }}
-              
-              setTimeout(function() {{
-                  navigator.splashscreen.hide();
-              }}, 3000);
+              setTimeout(function() {{ navigator.splashscreen.hide(); }}, 3000);
           }}, false);
           </script>
           '''
-
           if '</body>' in html_data:
               html_data = html_data.replace('</body>', permission_script + '\n</body>')
           else:
@@ -78,36 +70,80 @@ jobs:
               f.write(html_data)
           "
 
-      - name: Process Icon, Splash & Permissions
+      - name: Download Images & Process Permissions
         env:
-          ICON_DATA: ${{ github.event.client_payload.app_icon }}
-          SPLASH_DATA: ${{ github.event.client_payload.splash_screen }}
+          ICON_URL: ${{ github.event.client_payload.icon_url }}
+          SPLASH_URL: ${{ github.event.client_payload.splash_url }}
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
         run: |
           python3 -c "
-          import os, base64
+          import os, urllib.request
           os.makedirs('xtrapp/res', exist_ok=True)
           
-          icon_data = os.environ.get('ICON_DATA', '').strip()
-          splash_data = os.environ.get('SPLASH_DATA', '').strip()
+          icon_url = os.environ.get('ICON_URL', '').strip()
+          splash_url = os.environ.get('SPLASH_URL', '').strip()
           use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
           
           config = open('xtrapp/config.xml').read()
           config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
-          # 🚨 ম্যাজিক ফিক্স: ছবিগুলোকে ডিকোড করার সময় কোনো স্পেস থাকলে যেন ক্র্যাশ না করে
+          # 🚨 ImgBB URL থেকে ছবি সরাসরি ডাউনলোড করে সেট করা
           try:
-              if icon_data:
-                  with open('xtrapp/res/icon.png', 'wb') as f:
-                      f.write(base64.b64decode(icon_data + '===')) # প্যাডিং সমস্যা ফিক্স
+              if icon_url and icon_url != 'null':
+                  urllib.request.urlretrieve(icon_url, 'xtrapp/res/icon.png')
                   config = config.replace('</widget>', '    <icon src=\"res/icon.png\" />\n</widget>')
           except Exception as e:
-              print('Icon Error:', e)
+              print('Icon Download Error:', e)
 
           try:
-              if splash_data:
+              if splash_url and splash_url != 'null':
+                  urllib.request.urlretrieve(splash_url, 'xtrapp/res/splash.png')
+                  splash_xml = '''
+                  <preference name=\"SplashScreen\" value=\"screen\" />
+                  <preference name=\"SplashScreenDelay\" value=\"3000\" />
+                  <preference name=\"SplashMaintainAspectRatio\" value=\"true\" />
+                  <preference name=\"SplashShowOnlyFirstTime\" value=\"false\" />
+                  <preference name=\"FadeSplashScreen\" value=\"true\" />
+                  <preference name=\"FadeSplashScreenDuration\" value=\"500\" />
+                  <splash src=\"res/splash.png\" />
+                  '''
+                  config = config.replace('</widget>', splash_xml + '\n</widget>')
+          except Exception as e:
+              print('Splash Download Error:', e)
+
+          perm_xml = '<platform name=\"android\">\n'
+          perm_xml += '  <edit-config file=\"app/src/main/AndroidManifest.xml\" mode=\"merge\" target=\"/manifest/application\">\n    <application android:theme=\"@android:style/Theme.DeviceDefault.NoActionBar\" />\n  </edit-config>\n'
+          if use_camera:
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n  </config-file>\n'
+          if use_mic:
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />\n    <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\" />\n  </config-file>\n'
+          perm_xml += '</platform>'
+
+          config = config.replace('</widget>', perm_xml + '\n</widget>')
+          open('xtrapp/config.xml', 'w').write(config)
+          "
+
+      - name: Compile and Build APK
+        run: |
+          cd xtrapp
+          cordova build android --debug
+
+      - name: Delete Old Server Files
+        run: |
+          gh release delete latest --yes || true
+          git push --delete origin latest || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Final APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          files: xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}              if splash_data:
                   with open('xtrapp/res/splash.png', 'wb') as f:
                       f.write(base64.b64decode(splash_data + '===')) # প্যাডিং সমস্যা ফিক্স
                   

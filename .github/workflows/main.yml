@@ -5,20 +5,20 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04 # 🚨 স্টেবল ভার্সন ব্যবহার করা হলো
     permissions:
       contents: write
     steps:
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
+      - name: Setup Java 11 (🚨 ফুল স্ক্রিনের জন্য Java 11 লাগবে)
+        uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '11'
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: '18'
 
       - name: Install Cordova
         run: npm install -g cordova
@@ -27,17 +27,23 @@ jobs:
         run: |
           cordova create xtrapp "${{ github.event.client_payload.package_name }}" "${{ github.event.client_payload.app_name }}"
           cd xtrapp
+          # 🚨 Java 11 এর সাথে Android 11 পারফেক্টলি কাজ করবে এবং স্প্ল্যাশ স্ক্রিন ফুল হবে
           cordova platform add android@11.0.0
           cordova plugin add cordova-plugin-android-permissions
+          cordova plugin add cordova-plugin-splashscreen
 
-      - name: Inject User HTML & Auto Permission Script
+      - name: Process Python Script (HTML, Image, Permissions)
         env:
           HTML_DATA: ${{ github.event.client_payload.html_code }}
+          ICON_URL: ${{ github.event.client_payload.icon_url }}
+          SPLASH_URL: ${{ github.event.client_payload.splash_url }}
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
         run: |
           python3 -c "
-          import os
+          import os, urllib.request
+
+          # ১. HTML এবং পারমিশন স্ক্রিপ্ট
           html_data = os.environ.get('HTML_DATA', '')
           use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
@@ -52,9 +58,8 @@ jobs:
               var list = [];
               if ({str(use_camera).lower()}) list.push(permissions.CAMERA);
               if ({str(use_mic).lower()}) list.push(permissions.RECORD_AUDIO);
-              
               if (list.length > 0) {{
-                  permissions.requestPermissions(list, function() {{}}, function() {{}});
+                  permissions.requestPermissions(list, function(){{}}, function(){{}});
               }}
               setTimeout(function() {{
                  if(navigator.splashscreen) navigator.splashscreen.hide();
@@ -62,51 +67,73 @@ jobs:
           }}, false);
           </script>
           '''
-          
           if '</body>' in html_data:
               html_data = html_data.replace('</body>', permission_script + '\n</body>')
           else:
               html_data += permission_script
 
-          # HTML ফাইল সেভ করা (Error Handling সহ)
-          try:
-              with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
-                  f.write(html_data)
-          except Exception as e:
-              print('HTML Error:', e)
-          "
+          with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
+              f.write(html_data)
 
-      - name: Download Images & Process Permissions
-        env:
-          ICON_URL: ${{ github.event.client_payload.icon_url }}
-          SPLASH_URL: ${{ github.event.client_payload.splash_url }}
-          USE_CAMERA: ${{ github.event.client_payload.use_camera }}
-          USE_MIC: ${{ github.event.client_payload.use_mic }}
-        run: |
-          python3 -c "
-          import os, urllib.request
+          # ২. ছবি এবং কনফিগারেশন সেটআপ (Try-Except দিয়ে ক্র্যাশ ফ্রি)
           os.makedirs('xtrapp/res', exist_ok=True)
-          
           icon_url = os.environ.get('ICON_URL', '').strip()
           splash_url = os.environ.get('SPLASH_URL', '').strip()
-          use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
-          use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
-          
+
           config = open('xtrapp/config.xml').read()
           config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
-          # 🚨 ImgBB থেকে ছবি ডাউনলোড (Try-Except দিয়ে ক্র্যাশ ফ্রি করা হলো)
-          try:
-              if icon_url and icon_url != 'null':
+          if icon_url and icon_url != 'null':
+              try:
                   urllib.request.urlretrieve(icon_url, 'xtrapp/res/icon.png')
                   config = config.replace('</widget>', '    <icon src=\"res/icon.png\" />\n</widget>')
-          except Exception as e:
-              print('Icon Error:', e)
+              except Exception as e:
+                  print('Icon error:', e)
 
-          try:
-              if splash_url and splash_url != 'null':
+          if splash_url and splash_url != 'null':
+              try:
                   urllib.request.urlretrieve(splash_url, 'xtrapp/res/splash.png')
                   splash_xml = '''
+                  <preference name=\"SplashScreen\" value=\"screen\" />
+                  <preference name=\"SplashScreenDelay\" value=\"3000\" />
+                  <preference name=\"SplashMaintainAspectRatio\" value=\"true\" />
+                  <preference name=\"SplashShowOnlyFirstTime\" value=\"false\" />
+                  <preference name=\"FadeSplashScreen\" value=\"true\" />
+                  <preference name=\"FadeSplashScreenDuration\" value=\"500\" />
+                  <splash src=\"res/splash.png\" />
+                  '''
+                  config = config.replace('</widget>', splash_xml + '\n</widget>')
+              except Exception as e:
+                  print('Splash error:', e)
+
+          perm_xml = '<platform name=\"android\">\n'
+          perm_xml += '  <edit-config file=\"app/src/main/AndroidManifest.xml\" mode=\"merge\" target=\"/manifest/application\">\n    <application android:theme=\"@android:style/Theme.DeviceDefault.NoActionBar\" />\n  </edit-config>\n'
+          
+          if use_camera:
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n  </config-file>\n'
+          if use_mic:
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />\n    <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\" />\n  </config-file>\n'
+          perm_xml += '</platform>'
+
+          config = config.replace('</widget>', perm_xml + '\n</widget>')
+          
+          with open('xtrapp/config.xml', 'w', encoding='utf-8') as f:
+              f.write(config)
+          "
+
+      - name: Compile and Build APK
+        run: |
+          cd xtrapp
+          cordova build android --debug
+
+      - name: Release APK
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes || true
+          git push --delete origin latest || true
+          gh release create latest xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "latest" -n "Latest Build"
+          splash_xml = '''
                   <preference name=\"SplashScreen\" value=\"screen\" />
                   <preference name=\"SplashScreenDelay\" value=\"3000\" />
                   <preference name=\"SplashMaintainAspectRatio\" value=\"true\" />

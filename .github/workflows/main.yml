@@ -9,22 +9,16 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Setup Java 11 (ফুল-স্ক্রিন স্প্ল্যাশ স্ক্রিনের জন্য)
+      - name: Setup Java 17 (🚨 লেটেস্ট ইঞ্জিনের জন্য)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '11'
+          java-version: '17'
 
-      - name: Setup Node.js 18
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-
-      - name: Setup Gradle 7.6.3 (🚨 ম্যাজিক ফিক্স: JVM 11 Error সমাধানের জন্য)
-        run: |
-          wget https://services.gradle.org/distributions/gradle-7.6.3-bin.zip
-          unzip -q gradle-7.6.3-bin.zip
-          echo "$PWD/gradle-7.6.3/bin" >> $GITHUB_PATH
+          node-version: '20'
 
       - name: Install Cordova
         run: npm install -g cordova
@@ -33,11 +27,11 @@ jobs:
         run: |
           cordova create xtrapp "${{ github.event.client_payload.package_name }}" "${{ github.event.client_payload.app_name }}"
           cd xtrapp
-          cordova platform add android@11.0.0
+          # 🚨 লেটেস্ট Android ব্যবহার করা হচ্ছে
+          cordova platform add android@13.0.0
           cordova plugin add cordova-plugin-android-permissions
-          cordova plugin add cordova-plugin-splashscreen
 
-      - name: Process App Data & Images
+      - name: Process App Data & Full-Screen Splash
         env:
           HTML_DATA: ${{ github.event.client_payload.html_code }}
           ICON_URL: ${{ github.event.client_payload.icon_url }}
@@ -48,7 +42,7 @@ jobs:
           python3 -c "
           import os, urllib.request
 
-          # 1. HTML & Permission Script
+          # 1. HTML & Permission Script Setup
           html_data = os.environ.get('HTML_DATA', '<h1>Error loading code</h1>')
           use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
@@ -66,12 +60,10 @@ jobs:
               if (list.length > 0) {{
                   permissions.requestPermissions(list, function(){{}}, function(){{}});
               }}
-              setTimeout(function() {{
-                 if(navigator.splashscreen) navigator.splashscreen.hide();
-              }}, 3000);
           }}, false);
           </script>
           '''
+          
           if '</body>' in html_data:
               html_data = html_data.replace('</body>', permission_script + '\n</body>')
           else:
@@ -101,12 +93,12 @@ jobs:
           if splash_url.startswith('http'):
               try:
                   urllib.request.urlretrieve(splash_url, 'xtrapp/res/splash.png')
+                  # 🚨 Android 12+ এর নতুন ফুল-স্ক্রিন স্প্ল্যাশ স্ক্রিন ম্যাজিক
                   splash_xml = '''
-                  <preference name=\"SplashScreen\" value=\"screen\" />
+                  <preference name=\"AndroidWindowSplashScreenAnimatedIcon\" value=\"res/splash.png\" />
+                  <preference name=\"AndroidWindowSplashScreenBackground\" value=\"#FFFFFF\" />
                   <preference name=\"SplashScreenDelay\" value=\"3000\" />
-                  <preference name=\"SplashMaintainAspectRatio\" value=\"true\" />
-                  <preference name=\"SplashShowOnlyFirstTime\" value=\"false\" />
-                  <preference name=\"FadeSplashScreen\" value=\"true\" />
+                  <preference name=\"ShowSplashScreenSpinner\" value=\"false\" />
                   <preference name=\"FadeSplashScreenDuration\" value=\"500\" />
                   <splash src=\"res/splash.png\" />
                   '''
@@ -114,9 +106,11 @@ jobs:
               except Exception:
                   pass
 
-          # 3. Apply Permissions & Theme
+          # 3. Permissions & Theme
           perm_xml = '<platform name=\"android\">\n'
+          # ডিফল্ট থিম সেট করা হচ্ছে যাতে অ্যাকশন বার না থাকে
           perm_xml += '  <edit-config file=\"app/src/main/AndroidManifest.xml\" mode=\"merge\" target=\"/manifest/application\">\n    <application android:theme=\"@android:style/Theme.DeviceDefault.NoActionBar\" />\n  </edit-config>\n'
+          
           if use_camera:
               perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n  </config-file>\n'
           if use_mic:
@@ -140,141 +134,4 @@ jobs:
         run: |
           gh release delete latest --yes || true
           git push --delete origin latest || true
-          gh release create latest xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "latest" -n "Latest Build"              except Exception:
-                  pass
-
-          # 3. Permissions & Theme
-          perm_xml = '<platform name=\"android\">\n'
-          perm_xml += '  <edit-config file=\"app/src/main/AndroidManifest.xml\" mode=\"merge\" target=\"/manifest/application\">\n    <application android:theme=\"@android:style/Theme.DeviceDefault.NoActionBar\" />\n  </edit-config>\n'
-          if use_camera:
-              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n  </config-file>\n'
-          if use_mic:
-              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />\n    <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\" />\n  </config-file>\n'
-          perm_xml += '</platform>'
-
-          config = config.replace('</widget>', perm_xml + '\n</widget>')
-          
-          with open('xtrapp/config.xml', 'w', encoding='utf-8') as f:
-              f.write(config)
-          "
-
-      - name: Compile and Build APK
-        run: |
-          cd xtrapp
-          cordova build android --debug
-
-      - name: Release APK
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release delete latest --yes || true
-          git push --delete origin latest || true
-          gh release create latest xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "latest" -n "Latest Build"              except Exception:
-                  pass
-
-          # 3. Permissions & Theme
-          perm_xml = '<platform name=\"android\">\n'
-          perm_xml += '  <edit-config file=\"app/src/main/AndroidManifest.xml\" mode=\"merge\" target=\"/manifest/application\">\n    <application android:theme=\"@android:style/Theme.DeviceDefault.NoActionBar\" />\n  </edit-config>\n'
-          if use_camera:
-              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n  </config-file>\n'
-          if use_mic:
-              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />\n    <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\" />\n  </config-file>\n'
-          perm_xml += '</platform>'
-
-          config = config.replace('</widget>', perm_xml + '\n</widget>')
-          
-          with open('xtrapp/config.xml', 'w', encoding='utf-8') as f:
-              f.write(config)
-          "
-
-      - name: Fix Gradle Memory Issue (🚨 ম্যাজিক ফিক্স)
-        run: |
-          cd xtrapp
-          echo "org.gradle.jvmargs=-Xmx2048m" >> platforms/android/gradle.properties
-
-      - name: Compile and Build APK
-        run: |
-          cd xtrapp
-          cordova build android --debug
-
-      - name: Release APK
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release delete latest --yes || true
-          git push --delete origin latest || true
-          gh release create latest xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "latest" -n "Latest Build"          perm_xml = '<platform name=\"android\">\n'
-          perm_xml += '  <edit-config file=\"app/src/main/AndroidManifest.xml\" mode=\"merge\" target=\"/manifest/application\">\n    <application android:theme=\"@android:style/Theme.DeviceDefault.NoActionBar\" />\n  </edit-config>\n'
-          
-          if use_camera:
-              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n  </config-file>\n'
-          if use_mic:
-              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />\n    <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\" />\n  </config-file>\n'
-          perm_xml += '</platform>'
-
-          config = config.replace('</widget>', perm_xml + '\n</widget>')
-          
-          with open('xtrapp/config.xml', 'w', encoding='utf-8') as f:
-              f.write(config)
-          "
-
-      - name: Compile and Build APK
-        run: |
-          cd xtrapp
-          cordova build android --debug
-
-      - name: Release APK
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release delete latest --yes || true
-          git push --delete origin latest || true
           gh release create latest xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "latest" -n "Latest Build"
-          splash_xml = '''
-                  <preference name=\"SplashScreen\" value=\"screen\" />
-                  <preference name=\"SplashScreenDelay\" value=\"3000\" />
-                  <preference name=\"SplashMaintainAspectRatio\" value=\"true\" />
-                  <preference name=\"SplashShowOnlyFirstTime\" value=\"false\" />
-                  <preference name=\"FadeSplashScreen\" value=\"true\" />
-                  <preference name=\"FadeSplashScreenDuration\" value=\"500\" />
-                  <splash src=\"res/splash.png\" />
-                  '''
-                  config = config.replace('</widget>', splash_xml + '\n</widget>')
-          except Exception as e:
-              print('Splash Error:', e)
-
-          # 🚨 পারমিশন এবং থিম আপডেট
-          perm_xml = '<platform name=\"android\">\n'
-          perm_xml += '  <edit-config file=\"app/src/main/AndroidManifest.xml\" mode=\"merge\" target=\"/manifest/application\">\n    <application android:theme=\"@android:style/Theme.DeviceDefault.NoActionBar\" />\n  </edit-config>\n'
-          
-          if use_camera:
-              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n  </config-file>\n'
-          if use_mic:
-              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />\n    <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\" />\n  </config-file>\n'
-          perm_xml += '</platform>'
-
-          config = config.replace('</widget>', perm_xml + '\n</widget>')
-          
-          with open('xtrapp/config.xml', 'w') as f:
-              f.write(config)
-          "
-
-      - name: Compile and Build APK
-        run: |
-          cd xtrapp
-          cordova build android --debug
-
-      - name: Delete Old Server Files
-        run: |
-          gh release delete latest --yes || true
-          git push --delete origin latest || true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Final APK
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          files: xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

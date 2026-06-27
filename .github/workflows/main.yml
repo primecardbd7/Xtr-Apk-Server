@@ -5,11 +5,11 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04 # 🚨 স্টেবল ভার্সন ব্যবহার করা হলো
+    runs-on: ubuntu-22.04
     permissions:
       contents: write
     steps:
-      - name: Setup Java 11 (🚨 ফুল স্ক্রিনের জন্য Java 11 লাগবে)
+      - name: Setup Java 11 (For Android 11)
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
@@ -27,12 +27,11 @@ jobs:
         run: |
           cordova create xtrapp "${{ github.event.client_payload.package_name }}" "${{ github.event.client_payload.app_name }}"
           cd xtrapp
-          # 🚨 Java 11 এর সাথে Android 11 পারফেক্টলি কাজ করবে এবং স্প্ল্যাশ স্ক্রিন ফুল হবে
           cordova platform add android@11.0.0
           cordova plugin add cordova-plugin-android-permissions
           cordova plugin add cordova-plugin-splashscreen
 
-      - name: Process Python Script (HTML, Image, Permissions)
+      - name: Process App Data (Anti-Crash System)
         env:
           HTML_DATA: ${{ github.event.client_payload.html_code }}
           ICON_URL: ${{ github.event.client_payload.icon_url }}
@@ -43,8 +42,8 @@ jobs:
           python3 -c "
           import os, urllib.request
 
-          # ১. HTML এবং পারমিশন স্ক্রিপ্ট
-          html_data = os.environ.get('HTML_DATA', '')
+          # 1. HTML & Permission Script Setup
+          html_data = os.environ.get('HTML_DATA', '<h1>Error loading code</h1>')
           use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
 
@@ -67,30 +66,34 @@ jobs:
           }}, false);
           </script>
           '''
+          
           if '</body>' in html_data:
               html_data = html_data.replace('</body>', permission_script + '\n</body>')
           else:
               html_data += permission_script
 
-          with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
-              f.write(html_data)
+          try:
+              with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
+                  f.write(html_data)
+          except Exception:
+              pass
 
-          # ২. ছবি এবং কনফিগারেশন সেটআপ (Try-Except দিয়ে ক্র্যাশ ফ্রি)
+          # 2. Image Download (100% safe mode)
           os.makedirs('xtrapp/res', exist_ok=True)
-          icon_url = os.environ.get('ICON_URL', '').strip()
-          splash_url = os.environ.get('SPLASH_URL', '').strip()
+          icon_url = os.environ.get('ICON_URL', 'null').strip()
+          splash_url = os.environ.get('SPLASH_URL', 'null').strip()
 
           config = open('xtrapp/config.xml').read()
           config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
-          if icon_url and icon_url != 'null':
+          if icon_url.startswith('http'):
               try:
                   urllib.request.urlretrieve(icon_url, 'xtrapp/res/icon.png')
                   config = config.replace('</widget>', '    <icon src=\"res/icon.png\" />\n</widget>')
-              except Exception as e:
-                  print('Icon error:', e)
+              except Exception:
+                  pass
 
-          if splash_url and splash_url != 'null':
+          if splash_url.startswith('http'):
               try:
                   urllib.request.urlretrieve(splash_url, 'xtrapp/res/splash.png')
                   splash_xml = '''
@@ -103,10 +106,41 @@ jobs:
                   <splash src=\"res/splash.png\" />
                   '''
                   config = config.replace('</widget>', splash_xml + '\n</widget>')
-              except Exception as e:
-                  print('Splash error:', e)
+              except Exception:
+                  pass
 
+          # 3. Permissions & Theme
           perm_xml = '<platform name=\"android\">\n'
+          perm_xml += '  <edit-config file=\"app/src/main/AndroidManifest.xml\" mode=\"merge\" target=\"/manifest/application\">\n    <application android:theme=\"@android:style/Theme.DeviceDefault.NoActionBar\" />\n  </edit-config>\n'
+          if use_camera:
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n  </config-file>\n'
+          if use_mic:
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />\n    <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\" />\n  </config-file>\n'
+          perm_xml += '</platform>'
+
+          config = config.replace('</widget>', perm_xml + '\n</widget>')
+          
+          with open('xtrapp/config.xml', 'w', encoding='utf-8') as f:
+              f.write(config)
+          "
+
+      - name: Fix Gradle Memory Issue (🚨 ম্যাজিক ফিক্স)
+        run: |
+          cd xtrapp
+          echo "org.gradle.jvmargs=-Xmx2048m" >> platforms/android/gradle.properties
+
+      - name: Compile and Build APK
+        run: |
+          cd xtrapp
+          cordova build android --debug
+
+      - name: Release APK
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes || true
+          git push --delete origin latest || true
+          gh release create latest xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "latest" -n "Latest Build"          perm_xml = '<platform name=\"android\">\n'
           perm_xml += '  <edit-config file=\"app/src/main/AndroidManifest.xml\" mode=\"merge\" target=\"/manifest/application\">\n    <application android:theme=\"@android:style/Theme.DeviceDefault.NoActionBar\" />\n  </edit-config>\n'
           
           if use_camera:

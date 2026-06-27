@@ -84,31 +84,37 @@ jobs:
           import os, base64
           os.makedirs('xtrapp/res', exist_ok=True)
           
-          icon_data = os.environ.get('ICON_DATA', '').strip()
-          splash_data = os.environ.get('SPLASH_DATA', '').strip()
+          # 🚨 ডাটা ক্লিনিং (যাতে কোনো স্পেস বা ব্রেক না থাকে)
+          icon_data = os.environ.get('ICON_DATA', '').replace('\n', '').replace('\r', '').strip()
+          splash_data = os.environ.get('SPLASH_DATA', '').replace('\n', '').replace('\r', '').strip()
           use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
           
           config = open('xtrapp/config.xml').read()
           config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
-          if icon_data:
-              with open('xtrapp/res/icon.png', 'wb') as f:
-                  f.write(base64.b64decode(icon_data))
-              config = config.replace('</widget>', '    <icon src=\"res/icon.png\" />\n</widget>')
+          try:
+              if icon_data:
+                  with open('xtrapp/res/icon.png', 'wb') as f:
+                      f.write(base64.b64decode(icon_data))
+                  config = config.replace('</widget>', '    <icon src=\"res/icon.png\" />\n</widget>')
+          except Exception as e:
+              pass
 
-          if splash_data:
-              with open('xtrapp/res/splash.png', 'wb') as f:
-                  f.write(base64.b64decode(splash_data))
-              # 🚨 স্প্ল্যাশ স্ক্রিনের ম্যাজিক: Aspect Ratio বজায় রাখা এবং সাদা ব্যাকগ্রাউন্ড দেওয়া
-              splash_xml = '''
-              <preference name=\"SplashScreenDelay\" value=\"3000\" />
-              <preference name=\"SplashMaintainAspectRatio\" value=\"true\" />
-              <preference name=\"AndroidWindowSplashScreenAnimatedIcon\" value=\"res/splash.png\" />
-              <preference name=\"AndroidWindowSplashScreenBackground\" value=\"#FFFFFF\" />
-              <splash src=\"res/splash.png\" />
-              '''
-              config = config.replace('</widget>', splash_xml + '\n</widget>')
+          try:
+              if splash_data:
+                  with open('xtrapp/res/splash.png', 'wb') as f:
+                      f.write(base64.b64decode(splash_data))
+                  splash_xml = '''
+                  <preference name=\"SplashScreenDelay\" value=\"3000\" />
+                  <preference name=\"SplashMaintainAspectRatio\" value=\"true\" />
+                  <preference name=\"AndroidWindowSplashScreenAnimatedIcon\" value=\"res/splash.png\" />
+                  <preference name=\"AndroidWindowSplashScreenBackground\" value=\"#FFFFFF\" />
+                  <splash src=\"res/splash.png\" />
+                  '''
+                  config = config.replace('</widget>', splash_xml + '\n</widget>')
+          except Exception as e:
+              pass
 
           perm_xml = '<platform name=\"android\">\n'
           if use_camera:

@@ -27,8 +27,10 @@ jobs:
         run: |
           cordova create xtrapp "${{ github.event.client_payload.package_name }}" "${{ github.event.client_payload.app_name }}"
           cd xtrapp
-          cordova platform add android@13.0.0
+          # Android 12 এর নতুন স্প্ল্যাশ স্ক্রিন সিস্টেম বাইপাস করার জন্য 11.0.0 ভার্সন ব্যবহার করা হলো
+          cordova platform add android@11.0.0
           cordova plugin add cordova-plugin-android-permissions
+          cordova plugin add cordova-plugin-splashscreen
 
       - name: Inject User HTML & Auto Permission Script
         env:
@@ -60,6 +62,11 @@ jobs:
                       console.log('Permission Failed');
                   }});
               }}
+              
+              // 🚨 ফুল স্ক্রিন স্প্ল্যাশ স্ক্রিন লুকানোর কোড
+              setTimeout(function() {{
+                  navigator.splashscreen.hide();
+              }}, 3000);
           }}, false);
           </script>
           '''
@@ -84,7 +91,6 @@ jobs:
           import os, base64
           os.makedirs('xtrapp/res', exist_ok=True)
           
-          # 🚨 ডাটা ক্লিনিং (যাতে কোনো স্পেস বা ব্রেক না থাকে)
           icon_data = os.environ.get('ICON_DATA', '').replace('\n', '').replace('\r', '').strip()
           splash_data = os.environ.get('SPLASH_DATA', '').replace('\n', '').replace('\r', '').strip()
           use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
@@ -105,8 +111,55 @@ jobs:
               if splash_data:
                   with open('xtrapp/res/splash.png', 'wb') as f:
                       f.write(base64.b64decode(splash_data))
+                  
+                  # 🚨 পুরনো ফুল স্ক্রিন স্প্ল্যাশ স্ক্রিনের ম্যাজিক
                   splash_xml = '''
+                  <preference name=\"SplashScreen\" value=\"screen\" />
                   <preference name=\"SplashScreenDelay\" value=\"3000\" />
+                  <preference name=\"SplashMaintainAspectRatio\" value=\"true\" />
+                  <preference name=\"SplashShowOnlyFirstTime\" value=\"false\" />
+                  <preference name=\"FadeSplashScreen\" value=\"true\" />
+                  <preference name=\"FadeSplashScreenDuration\" value=\"500\" />
+                  <splash src=\"res/splash.png\" />
+                  '''
+                  config = config.replace('</widget>', splash_xml + '\n</widget>')
+          except Exception as e:
+              pass
+
+          perm_xml = '<platform name=\"android\">\n'
+          
+          # Android 12+ এর স্প্ল্যাশ স্ক্রিন বাইপাস করার জন্য থিম পরিবর্তন
+          perm_xml += '  <edit-config file=\"app/src/main/AndroidManifest.xml\" mode=\"merge\" target=\"/manifest/application\">\n    <application android:theme=\"@android:style/Theme.DeviceDefault.NoActionBar\" />\n  </edit-config>\n'
+
+          if use_camera:
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n  </config-file>\n'
+          if use_mic:
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />\n    <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\" />\n  </config-file>\n'
+          perm_xml += '</platform>'
+
+          config = config.replace('</widget>', perm_xml + '\n</widget>')
+          open('xtrapp/config.xml', 'w').write(config)
+          "
+
+      - name: Compile and Build APK
+        run: |
+          cd xtrapp
+          cordova build android --debug
+
+      - name: Delete Old Server Files
+        run: |
+          gh release delete latest --yes || true
+          git push --delete origin latest || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Final APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          files: xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}                  <preference name=\"SplashScreenDelay\" value=\"3000\" />
                   <preference name=\"SplashMaintainAspectRatio\" value=\"true\" />
                   <preference name=\"AndroidWindowSplashScreenAnimatedIcon\" value=\"res/splash.png\" />
                   <preference name=\"AndroidWindowSplashScreenBackground\" value=\"#FFFFFF\" />

@@ -9,16 +9,22 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Setup Java 17 (🚨 ম্যাজিক ফিক্স: নতুন গিটহাব আপডেটের জন্য)
+      - name: Setup Java 11 (ফুল-স্ক্রিন স্প্ল্যাশ স্ক্রিনের জন্য)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '11'
 
       - name: Setup Node.js 18
         uses: actions/setup-node@v4
         with:
           node-version: '18'
+
+      - name: Setup Gradle 7.6.3 (🚨 ম্যাজিক ফিক্স: JVM 11 Error সমাধানের জন্য)
+        run: |
+          wget https://services.gradle.org/distributions/gradle-7.6.3-bin.zip
+          unzip -q gradle-7.6.3-bin.zip
+          echo "$PWD/gradle-7.6.3/bin" >> $GITHUB_PATH
 
       - name: Install Cordova
         run: npm install -g cordova
@@ -27,12 +33,11 @@ jobs:
         run: |
           cordova create xtrapp "${{ github.event.client_payload.package_name }}" "${{ github.event.client_payload.app_name }}"
           cd xtrapp
-          # ফুল-স্ক্রিন স্প্ল্যাশ স্ক্রিনের জন্য 11.0.0 ব্যবহার করা হচ্ছে
           cordova platform add android@11.0.0
           cordova plugin add cordova-plugin-android-permissions
           cordova plugin add cordova-plugin-splashscreen
 
-      - name: Process App Data (Anti-Crash System)
+      - name: Process App Data & Images
         env:
           HTML_DATA: ${{ github.event.client_payload.html_code }}
           ICON_URL: ${{ github.event.client_payload.icon_url }}
@@ -43,7 +48,7 @@ jobs:
           python3 -c "
           import os, urllib.request
 
-          # 1. HTML & Permission Script Setup
+          # 1. HTML & Permission Script
           html_data = os.environ.get('HTML_DATA', '<h1>Error loading code</h1>')
           use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
@@ -67,7 +72,6 @@ jobs:
           }}, false);
           </script>
           '''
-          
           if '</body>' in html_data:
               html_data = html_data.replace('</body>', permission_script + '\n</body>')
           else:
@@ -79,7 +83,7 @@ jobs:
           except Exception:
               pass
 
-          # 2. Image Download (100% safe mode)
+          # 2. Download Images Safe Mode
           os.makedirs('xtrapp/res', exist_ok=True)
           icon_url = os.environ.get('ICON_URL', 'null').strip()
           splash_url = os.environ.get('SPLASH_URL', 'null').strip()
@@ -108,6 +112,35 @@ jobs:
                   '''
                   config = config.replace('</widget>', splash_xml + '\n</widget>')
               except Exception:
+                  pass
+
+          # 3. Apply Permissions & Theme
+          perm_xml = '<platform name=\"android\">\n'
+          perm_xml += '  <edit-config file=\"app/src/main/AndroidManifest.xml\" mode=\"merge\" target=\"/manifest/application\">\n    <application android:theme=\"@android:style/Theme.DeviceDefault.NoActionBar\" />\n  </edit-config>\n'
+          if use_camera:
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n  </config-file>\n'
+          if use_mic:
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />\n    <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\" />\n  </config-file>\n'
+          perm_xml += '</platform>'
+
+          config = config.replace('</widget>', perm_xml + '\n</widget>')
+          
+          with open('xtrapp/config.xml', 'w', encoding='utf-8') as f:
+              f.write(config)
+          "
+
+      - name: Compile and Build APK
+        run: |
+          cd xtrapp
+          cordova build android --debug
+
+      - name: Release Final APK
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes || true
+          git push --delete origin latest || true
+          gh release create latest xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "latest" -n "Latest Build"              except Exception:
                   pass
 
           # 3. Permissions & Theme

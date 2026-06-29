@@ -133,33 +133,4 @@ jobs:
         run: |
           gh release delete latest --yes || true
           git push --delete origin latest || true
-          gh release create latest xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "latest" -n "Latest Build"                  pass
-
-          # 3. Permissions & Theme
-          perm_xml = '<platform name=\"android\">\n'
-          perm_xml += '  <edit-config file=\"app/src/main/AndroidManifest.xml\" mode=\"merge\" target=\"/manifest/application\">\n    <application android:theme=\"@android:style/Theme.DeviceDefault.NoActionBar\" />\n  </edit-config>\n'
-          
-          if use_camera:
-              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n  </config-file>\n'
-          if use_mic:
-              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />\n    <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\" />\n  </config-file>\n'
-          perm_xml += '</platform>'
-
-          config = config.replace('</widget>', perm_xml + '\n</widget>')
-          
-          with open('xtrapp/config.xml', 'w', encoding='utf-8') as f:
-              f.write(config)
-          "
-
-      - name: Compile and Build APK
-        run: |
-          cd xtrapp
-          cordova build android --debug
-
-      - name: Release Final APK
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release delete latest --yes || true
-          git push --delete origin latest || true
           gh release create latest xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "latest" -n "Latest Build"

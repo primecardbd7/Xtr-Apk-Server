@@ -42,36 +42,22 @@ jobs:
           cordova platform add android@13.0.0
           cordova plugin add cordova-plugin-android-permissions
 
-      - name: Download Code & Images
+      - name: Inject User HTML & Auto Permission Script
         env:
-          CODE_URL: ${{ github.event.client_payload.code_url }}
-          ICON_URL: ${{ github.event.client_payload.icon_url }}
-          SPLASH_URL: ${{ github.event.client_payload.splash_url }}
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
         run: |
           python3 -c "
-          import os, urllib.request
-          os.makedirs('xtrapp/res', exist_ok=True)
+          import os
           
-          code_url = os.environ.get('CODE_URL', '').strip()
-          icon_url = os.environ.get('ICON_URL', '').strip()
-          splash_url = os.environ.get('SPLASH_URL', '').strip()
-          use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
-          use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
-          
-          # 🚨 ১. কোড ক্লাউড থেকে ডাউনলোড করা
+          # 🚨 ম্যাজিক: রিপোজিটরির current_build.html থেকে বিশাল কোড পড়া হচ্ছে
           try:
-              if code_url and code_url != 'null':
-                  urllib.request.urlretrieve(code_url, 'xtrapp/www/index.html')
-          except Exception as e:
-              print('Code Download Error:', e)
-
-          # পারমিশন স্ক্রিপ্ট ঢোকানো
-          try:
-              html_data = open('xtrapp/www/index.html', 'r', encoding='utf-8').read()
+              html_data = open('current_build.html', 'r', encoding='utf-8').read()
           except:
               html_data = '<h1>Error loading code</h1>'
+
+          use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
+          use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
 
           if 'cordova.js' not in html_data:
               html_data = '<script src=\"cordova.js\"></script>\n' + html_data
@@ -96,8 +82,24 @@ jobs:
               html_data += permission_script
               
           open('xtrapp/www/index.html', 'w', encoding='utf-8').write(html_data)
+          "
 
-          # 🚨 ২. ছবি ডাউনলোড এবং কনফিগারেশন
+      - name: Download Images & Process Configuration
+        env:
+          ICON_URL: ${{ github.event.client_payload.icon_url }}
+          SPLASH_URL: ${{ github.event.client_payload.splash_url }}
+          USE_CAMERA: ${{ github.event.client_payload.use_camera }}
+          USE_MIC: ${{ github.event.client_payload.use_mic }}
+        run: |
+          python3 -c "
+          import os, urllib.request
+          os.makedirs('xtrapp/res', exist_ok=True)
+          
+          icon_url = os.environ.get('ICON_URL', '').strip()
+          splash_url = os.environ.get('SPLASH_URL', '').strip()
+          use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
+          use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
+          
           config = open('xtrapp/config.xml', 'r', encoding='utf-8').read()
           config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
@@ -107,6 +109,42 @@ jobs:
                   config = config.replace('</widget>', '    <icon src=\"res/icon.png\" />\n</widget>')
           except: pass
 
+          try:
+              if splash_url and splash_url != 'null':
+                  urllib.request.urlretrieve(splash_url, 'xtrapp/res/splash.png')
+                  splash_xml = '''
+                  <preference name=\"AndroidWindowSplashScreenAnimatedIcon\" value=\"res/splash.png\" />
+                  <preference name=\"AndroidWindowSplashScreenBackground\" value=\"#FFFFFF\" />
+                  <preference name=\"SplashScreenDelay\" value=\"3000\" />
+                  <preference name=\"ShowSplashScreenSpinner\" value=\"false\" />
+                  '''
+                  config = config.replace('</widget>', splash_xml + '\n</widget>')
+          except: pass
+
+          perm_xml = '<platform name=\"android\">\n'
+          perm_xml += '  <edit-config file=\"app/src/main/AndroidManifest.xml\" mode=\"merge\" target=\"/manifest/application\">\n    <application android:theme=\"@android:style/Theme.DeviceDefault.NoActionBar\" />\n  </edit-config>\n'
+          if use_camera:
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n  </config-file>\n'
+          if use_mic:
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />\n    <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\" />\n  </config-file>\n'
+          perm_xml += '</platform>'
+
+          config = config.replace('</widget>', perm_xml + '\n</widget>')
+          open('xtrapp/config.xml', 'w', encoding='utf-8').write(config)
+          "
+
+      - name: Compile and Build APK
+        run: |
+          cd xtrapp
+          cordova build android --debug
+
+      - name: Release Final APK
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes || true
+          git push --delete origin latest || true
+          gh release create latest xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "latest" -n "Latest Build"
           try:
               if splash_url and splash_url != 'null':
                   urllib.request.urlretrieve(splash_url, 'xtrapp/res/splash.png')

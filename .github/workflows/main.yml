@@ -9,7 +9,6 @@ jobs:
     permissions:
       contents: write
     steps:
-      # 🚨 ম্যাজিক ফিক্স: Git রিপোজিটরি সেটআপ করা হলো (যাতে Release Error না আসে)
       - name: Checkout Repository
         uses: actions/checkout@v4
 
@@ -24,6 +23,16 @@ jobs:
         with:
           node-version: '20'
 
+      # 🚨 ক্যাশ সিস্টেম: বিল্ড অনেক ফাস্ট হবে
+      - name: Cache Cordova and Gradle
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.npm
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-build-cache
+
       - name: Install Cordova
         run: npm install -g cordova
 
@@ -34,9 +43,9 @@ jobs:
           cordova platform add android@13.0.0
           cordova plugin add cordova-plugin-android-permissions
 
-      - name: Process App Data & Full-Screen Splash
+      - name: Download Code & Images
         env:
-          HTML_DATA: ${{ github.event.client_payload.html_code }}
+          CODE_URL: ${{ github.event.client_payload.code_url }}
           ICON_URL: ${{ github.event.client_payload.icon_url }}
           SPLASH_URL: ${{ github.event.client_payload.splash_url }}
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
@@ -44,12 +53,23 @@ jobs:
         run: |
           python3 -c "
           import os, urllib.request
-
-          # 1. HTML & Permission Script Setup
-          html_data = os.environ.get('HTML_DATA', '<h1>Error loading code</h1>')
+          os.makedirs('xtrapp/res', exist_ok=True)
+          
+          code_url = os.environ.get('CODE_URL', '').strip()
+          icon_url = os.environ.get('ICON_URL', '').strip()
+          splash_url = os.environ.get('SPLASH_URL', '').strip()
           use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
+          
+          # 🚨 কোড ক্লাউড থেকে ডাউনলোড করা হচ্ছে
+          try:
+              if code_url and code_url != 'null':
+                  urllib.request.urlretrieve(code_url, 'xtrapp/www/index.html')
+          except Exception as e:
+              print('Code Download Error:', e)
 
+          # পারমিশন স্ক্রিপ্ট ঢোকানো
+          html_data = open('xtrapp/www/index.html').read()
           if 'cordova.js' not in html_data:
               html_data = '<script src=\"cordova.js\"></script>\n' + html_data
 
@@ -66,47 +86,54 @@ jobs:
           }}, false);
           </script>
           '''
-          
-          if '</body>' in html_data:
-              html_data = html_data.replace('</body>', permission_script + '\n</body>')
-          else:
-              html_data += permission_script
-
-          try:
-              with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
-                  f.write(html_data)
-          except Exception:
-              pass
-
-          # 2. Download Images Safe Mode
-          os.makedirs('xtrapp/res', exist_ok=True)
-          icon_url = os.environ.get('ICON_URL', 'null').strip()
-          splash_url = os.environ.get('SPLASH_URL', 'null').strip()
+          html_data = html_data.replace('</body>', permission_script + '\n</body>') if '</body>' in html_data else html_data + permission_script
+          open('xtrapp/www/index.html', 'w', encoding='utf-8').write(html_data)
 
           config = open('xtrapp/config.xml').read()
           config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
-          if icon_url.startswith('http'):
-              try:
+          try:
+              if icon_url and icon_url != 'null':
                   urllib.request.urlretrieve(icon_url, 'xtrapp/res/icon.png')
                   config = config.replace('</widget>', '    <icon src=\"res/icon.png\" />\n</widget>')
-              except Exception:
-                  pass
+          except: pass
 
-          if splash_url.startswith('http'):
-              try:
+          try:
+              if splash_url and splash_url != 'null':
                   urllib.request.urlretrieve(splash_url, 'xtrapp/res/splash.png')
                   splash_xml = '''
                   <preference name=\"AndroidWindowSplashScreenAnimatedIcon\" value=\"res/splash.png\" />
                   <preference name=\"AndroidWindowSplashScreenBackground\" value=\"#FFFFFF\" />
                   <preference name=\"SplashScreenDelay\" value=\"3000\" />
                   <preference name=\"ShowSplashScreenSpinner\" value=\"false\" />
-                  <preference name=\"FadeSplashScreenDuration\" value=\"500\" />
-                  <splash src=\"res/splash.png\" />
                   '''
                   config = config.replace('</widget>', splash_xml + '\n</widget>')
-              except Exception:
-                  pass
+          except: pass
+
+          perm_xml = '<platform name=\"android\">\n'
+          perm_xml += '  <edit-config file=\"app/src/main/AndroidManifest.xml\" mode=\"merge\" target=\"/manifest/application\">\n    <application android:theme=\"@android:style/Theme.DeviceDefault.NoActionBar\" />\n  </edit-config>\n'
+          if use_camera:
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n  </config-file>\n'
+          if use_mic:
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />\n  </config-file>\n'
+          perm_xml += '</platform>'
+
+          config = config.replace('</widget>', perm_xml + '\n</widget>')
+          open('xtrapp/config.xml', 'w').write(config)
+          "
+
+      - name: Compile and Build APK
+        run: |
+          cd xtrapp
+          cordova build android --debug
+
+      - name: Release Final APK
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes || true
+          git push --delete origin latest || true
+          gh release create latest xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "latest" -n "Latest Build"                  pass
 
           # 3. Permissions & Theme
           perm_xml = '<platform name=\"android\">\n'

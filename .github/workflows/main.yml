@@ -23,15 +23,6 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Cache Cordova and Gradle
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.npm
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-build-cache
-
       - name: Install Cordova
         run: npm install -g cordova
 
@@ -42,7 +33,7 @@ jobs:
           cordova platform add android@13.0.0
           cordova plugin add cordova-plugin-android-permissions
 
-      - name: Inject User HTML & Auto Permission Script
+      - name: Process Code & Setup Permissions
         env:
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
@@ -50,15 +41,16 @@ jobs:
           python3 -c "
           import os
           
-          # 🚨 ম্যাজিক: রিপোজিটরির current_build.html থেকে বিশাল কোড পড়া হচ্ছে
+          # 🚨 ক্লাউড বা ফাইল থেকে কোড পড়া হচ্ছে
           try:
               html_data = open('current_build.html', 'r', encoding='utf-8').read()
-          except:
-              html_data = '<h1>Error loading code</h1>'
+          except Exception as e:
+              html_data = '<h1>Error loading code! Please try building again.</h1>'
 
           use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
 
+          # Cordova প্লাগিন অ্যাড করা
           if 'cordova.js' not in html_data:
               html_data = '<script src=\"cordova.js\"></script>\n' + html_data
 
@@ -81,10 +73,11 @@ jobs:
           else:
               html_data += permission_script
               
-          open('xtrapp/www/index.html', 'w', encoding='utf-8').write(html_data)
+          with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
+              f.write(html_data)
           "
 
-      - name: Download Images & Process Configuration
+      - name: Download Images & Configure App
         env:
           ICON_URL: ${{ github.event.client_payload.icon_url }}
           SPLASH_URL: ${{ github.event.client_payload.splash_url }}
@@ -103,10 +96,55 @@ jobs:
           config = open('xtrapp/config.xml', 'r', encoding='utf-8').read()
           config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
+          # 🚨 আইকন ডাউনলোড
           try:
               if icon_url and icon_url != 'null':
                   urllib.request.urlretrieve(icon_url, 'xtrapp/res/icon.png')
                   config = config.replace('</widget>', '    <icon src=\"res/icon.png\" />\n</widget>')
+          except Exception as e:
+              print('Icon error:', e)
+
+          # 🚨 স্প্ল্যাশ স্ক্রিন ডাউনলোড
+          try:
+              if splash_url and splash_url != 'null':
+                  urllib.request.urlretrieve(splash_url, 'xtrapp/res/splash.png')
+                  splash_xml = '''
+                  <preference name=\"AndroidWindowSplashScreenAnimatedIcon\" value=\"res/splash.png\" />
+                  <preference name=\"AndroidWindowSplashScreenBackground\" value=\"#FFFFFF\" />
+                  <preference name=\"SplashScreenDelay\" value=\"3000\" />
+                  <preference name=\"ShowSplashScreenSpinner\" value=\"false\" />
+                  '''
+                  config = config.replace('</widget>', splash_xml + '\n</widget>')
+          except Exception as e:
+              print('Splash error:', e)
+
+          # 🚨 অ্যান্ড্রয়েড ম্যানিফেস্ট ও পারমিশন
+          perm_xml = '<platform name=\"android\">\n'
+          perm_xml += '  <edit-config file=\"app/src/main/AndroidManifest.xml\" mode=\"merge\" target=\"/manifest/application\">\n    <application android:theme=\"@android:style/Theme.DeviceDefault.NoActionBar\" />\n  </edit-config>\n'
+          if use_camera:
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n  </config-file>\n'
+          if use_mic:
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />\n    <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\" />\n  </config-file>\n'
+          perm_xml += '</platform>'
+
+          config = config.replace('</widget>', perm_xml + '\n</widget>')
+          
+          with open('xtrapp/config.xml', 'w', encoding='utf-8') as f:
+              f.write(config)
+          "
+
+      - name: Compile and Build APK
+        run: |
+          cd xtrapp
+          cordova build android --debug
+
+      - name: Release Final APK
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes || true
+          git push --delete origin latest || true
+          gh release create latest xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "latest" -n "Latest Build"                  config = config.replace('</widget>', '    <icon src=\"res/icon.png\" />\n</widget>')
           except: pass
 
           try:

@@ -33,38 +33,46 @@ jobs:
           cordova platform add android@13.0.0
           cordova plugin add cordova-plugin-android-permissions
 
-      - name: Process Code & Setup Permissions
+      - name: Run Safe Python Script
         env:
+          ICON_URL: ${{ github.event.client_payload.icon_url }}
+          SPLASH_URL: ${{ github.event.client_payload.splash_url }}
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
         run: |
-          python3 -c "
+          cat << 'EOF' > process_app.py
           import os
-          
+          import urllib.request
+
+          # 1. HTML & Permission
           try:
-              html_data = open('current_build.html', 'r', encoding='utf-8').read()
-          except Exception:
+              with open('current_build.html', 'r', encoding='utf-8') as f:
+                  html_data = f.read()
+          except:
               html_data = '<h1>Error loading code!</h1>'
 
-          use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
+          use_cam = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
 
           if 'cordova.js' not in html_data:
-              html_data = '<script src=\"cordova.js\"></script>\n' + html_data
+              html_data = '<script src="cordova.js"></script>\n' + html_data
 
-          permission_script = f'''
+          cam_str = 'true' if use_cam else 'false'
+          mic_str = 'true' if use_mic else 'false'
+
+          permission_script = f"""
           <script>
           document.addEventListener('deviceready', function() {{
               var permissions = cordova.plugins.permissions;
               var list = [];
-              if ({str(use_camera).lower()}) list.push(permissions.CAMERA);
-              if ({str(use_mic).lower()}) list.push(permissions.RECORD_AUDIO);
+              if ({cam_str}) list.push(permissions.CAMERA);
+              if ({mic_str}) list.push(permissions.RECORD_AUDIO);
               if (list.length > 0) {{
                   permissions.requestPermissions(list, function(){{}}, function(){{}});
               }}
           }}, false);
           </script>
-          '''
+          """
           
           if '</body>' in html_data:
               html_data = html_data.replace('</body>', permission_script + '\n</body>')
@@ -73,40 +81,66 @@ jobs:
               
           with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
               f.write(html_data)
-          "
 
-      - name: Download Images & Configure App
-        env:
-          ICON_URL: ${{ github.event.client_payload.icon_url }}
-          SPLASH_URL: ${{ github.event.client_payload.splash_url }}
-          USE_CAMERA: ${{ github.event.client_payload.use_camera }}
-          USE_MIC: ${{ github.event.client_payload.use_mic }}
-        run: |
-          python3 -c "
-          import os, urllib.request
+          # 2. Download Images
           os.makedirs('xtrapp/res', exist_ok=True)
-          
           icon_url = os.environ.get('ICON_URL', '').strip()
           splash_url = os.environ.get('SPLASH_URL', '').strip()
-          use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
-          use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
-          
-          config = open('xtrapp/config.xml', 'r', encoding='utf-8').read()
-          config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
-          try:
-              if icon_url and icon_url != 'null':
+          with open('xtrapp/config.xml', 'r', encoding='utf-8') as f:
+              config = f.read()
+              
+          config = config.replace('<widget ', '<widget xmlns:android="http://schemas.android.com/apk/res/android" ')
+
+          if icon_url and icon_url != 'null':
+              try:
                   urllib.request.urlretrieve(icon_url, 'xtrapp/res/icon.png')
-                  config = config.replace('</widget>', '    <icon src=\"res/icon.png\" />\n</widget>')
-          except: pass
+                  config = config.replace('</widget>', '    <icon src="res/icon.png" />\n</widget>')
+              except: pass
 
-          try:
-              if splash_url and splash_url != 'null':
+          if splash_url and splash_url != 'null':
+              try:
                   urllib.request.urlretrieve(splash_url, 'xtrapp/res/splash.png')
-                  splash_xml = '''
-                  <preference name=\"AndroidWindowSplashScreenAnimatedIcon\" value=\"res/splash.png\" />
-                  <preference name=\"AndroidWindowSplashScreenBackground\" value=\"#FFFFFF\" />
-                  <preference name=\"SplashScreenDelay\" value=\"3000\" />
+                  splash_xml = """
+                  <preference name="AndroidWindowSplashScreenAnimatedIcon" value="res/splash.png" />
+                  <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
+                  <preference name="SplashScreenDelay" value="3000" />
+                  <preference name="ShowSplashScreenSpinner" value="false" />
+                  """
+                  config = config.replace('</widget>', splash_xml + '\n</widget>')
+              except: pass
+
+          # 3. Permissions & Theme
+          perm_xml = '<platform name="android">\n'
+          perm_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />\n  </edit-config>\n'
+          
+          if use_cam:
+              perm_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n  </config-file>\n'
+          if use_mic:
+              perm_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n  </config-file>\n'
+          perm_xml += '</platform>'
+
+          config = config.replace('</widget>', perm_xml + '\n</widget>')
+          
+          with open('xtrapp/config.xml', 'w', encoding='utf-8') as f:
+              f.write(config)
+          EOF
+
+          python3 process_app.py
+
+      - name: Compile and Build APK
+        run: |
+          cd xtrapp
+          echo "org.gradle.jvmargs=-Xmx2048m" >> platforms/android/gradle.properties
+          cordova build android --debug || true
+
+      - name: Release Final APK via API
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes || echo "No old release"
+          git push --delete origin latest || echo "No old tag"
+          gh release create latest xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "latest" -n "Latest Build" || echo "Failed to upload APK"                  <preference name=\"SplashScreenDelay\" value=\"3000\" />
                   <preference name=\"ShowSplashScreenSpinner\" value=\"false\" />
                   '''
                   config = config.replace('</widget>', splash_xml + '\n</widget>')

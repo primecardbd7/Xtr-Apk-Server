@@ -26,14 +26,25 @@ jobs:
       - name: Install Cordova
         run: npm install -g cordova
 
-      - name: Create Fresh Android App
+      - name: Create App (With Auto-Fix Safety)
         run: |
-          cordova create xtrapp "${{ github.event.client_payload.package_name }}" "${{ github.event.client_payload.app_name }}"
+          PKG="${{ github.event.client_payload.package_name }}"
+          APP="${{ github.event.client_payload.app_name }}"
+          
+          # 🚨 ম্যাজিক ১: ইউজারের ভুল প্যাকেজ নেম নিজে নিজে ঠিক করে নেবে
+          PKG=$(echo "$PKG" | tr -d ' ' | tr -d '"' | tr -d "'")
+          APP=$(echo "$APP" | tr -d '"' | tr -d "'")
+          
+          if [[ "$PKG" != *.* ]]; then
+            PKG="com.xtrweb.$PKG"
+          fi
+          
+          cordova create xtrapp "$PKG" "$APP"
           cd xtrapp
           cordova platform add android@13.0.0
           cordova plugin add cordova-plugin-android-permissions
 
-      - name: Run Safe Python Script
+      - name: Process Code, Images & Permissions
         env:
           ICON_URL: ${{ github.event.client_payload.icon_url }}
           SPLASH_URL: ${{ github.event.client_payload.splash_url }}
@@ -41,26 +52,25 @@ jobs:
           USE_MIC: ${{ github.event.client_payload.use_mic }}
         run: |
           cat << 'EOF' > process_app.py
-          import os
-          import urllib.request
+          import os, urllib.request
 
-          # 1. HTML & Permission
+          # 1. HTML & Script
           try:
               with open('current_build.html', 'r', encoding='utf-8') as f:
-                  html_data = f.read()
+                  html = f.read()
           except:
-              html_data = '<h1>Error loading code!</h1>'
+              html = '<h1>Welcome to Xtrweb!</h1>'
 
           use_cam = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
 
-          if 'cordova.js' not in html_data:
-              html_data = '<script src="cordova.js"></script>\n' + html_data
+          if 'cordova.js' not in html:
+              html = '<script src="cordova.js"></script>\n' + html
 
           cam_str = 'true' if use_cam else 'false'
           mic_str = 'true' if use_mic else 'false'
 
-          permission_script = f"""
+          script = f"""
           <script>
           document.addEventListener('deviceready', function() {{
               var permissions = cordova.plugins.permissions;
@@ -74,39 +84,76 @@ jobs:
           </script>
           """
           
-          if '</body>' in html_data:
-              html_data = html_data.replace('</body>', permission_script + '\n</body>')
+          if '</body>' in html:
+              html = html.replace('</body>', script + '\n</body>')
           else:
-              html_data += permission_script
+              html += script
               
           with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
-              f.write(html_data)
+              f.write(html)
 
-          # 2. Download Images
+          # 2. Images Setup
           os.makedirs('xtrapp/res', exist_ok=True)
-          icon_url = os.environ.get('ICON_URL', '').strip()
-          splash_url = os.environ.get('SPLASH_URL', '').strip()
+          icon = os.environ.get('ICON_URL', '').strip()
+          splash = os.environ.get('SPLASH_URL', '').strip()
 
           with open('xtrapp/config.xml', 'r', encoding='utf-8') as f:
               config = f.read()
               
           config = config.replace('<widget ', '<widget xmlns:android="http://schemas.android.com/apk/res/android" ')
 
-          if icon_url and icon_url != 'null':
+          if icon and icon != 'null':
               try:
-                  urllib.request.urlretrieve(icon_url, 'xtrapp/res/icon.png')
+                  urllib.request.urlretrieve(icon, 'xtrapp/res/icon.png')
                   config = config.replace('</widget>', '    <icon src="res/icon.png" />\n</widget>')
               except: pass
 
-          if splash_url and splash_url != 'null':
+          if splash and splash != 'null':
               try:
-                  urllib.request.urlretrieve(splash_url, 'xtrapp/res/splash.png')
-                  splash_xml = """
+                  urllib.request.urlretrieve(splash, 'xtrapp/res/splash.png')
+                  s_xml = """
                   <preference name="AndroidWindowSplashScreenAnimatedIcon" value="res/splash.png" />
                   <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
                   <preference name="SplashScreenDelay" value="3000" />
                   <preference name="ShowSplashScreenSpinner" value="false" />
                   """
+                  config = config.replace('</widget>', s_xml + '\n</widget>')
+              except: pass
+
+          # 3. Permissions & Safe Theme
+          # 🚨 ম্যাজিক ২: থিম এরর ফিক্স করা হলো (AppCompat)
+          p_xml = '<platform name="android">\n'
+          p_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@style/Theme.AppCompat.NoActionBar" />\n  </edit-config>\n'
+          
+          if use_cam:
+              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n  </config-file>\n'
+          if use_mic:
+              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n  </config-file>\n'
+          p_xml += '</platform>'
+
+          config = config.replace('</widget>', p_xml + '\n</widget>')
+          
+          with open('xtrapp/config.xml', 'w', encoding='utf-8') as f:
+              f.write(config)
+          EOF
+          
+          python3 process_app.py
+
+      - name: Compile and Build APK
+        run: |
+          cd xtrapp
+          # 🚨 র‍্যাম ফুল পারফরম্যান্স দেওয়া হলো
+          export GRADLE_OPTS="-Xmx2048m -Dorg.gradle.daemon=false"
+          echo "org.gradle.jvmargs=-Xmx2048m" >> platforms/android/gradle.properties
+          cordova build android --debug
+
+      - name: Release Final APK
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes || true
+          git push --delete origin latest || true
+          gh release create latest xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "latest" -n "Latest Build"                  """
                   config = config.replace('</widget>', splash_xml + '\n</widget>')
               except: pass
 

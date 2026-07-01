@@ -41,19 +41,25 @@ jobs:
           cordova platform add android@13.0.0
           cordova plugin add cordova-plugin-android-permissions
 
-      - name: Process Code & Fix Time-Out Error
+      - name: Process App Data (Code, Image & Fix Hang)
         env:
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
         run: |
           cat << 'EOF' > process_app.py
-          import os, urllib.request
+          import os, json, base64
 
+          # 🚨 JSON ফাইল থেকে সরাসরি কোড ও ছবি পড়া হচ্ছে
           try:
-              with open('current_build.html', 'r', encoding='utf-8') as f:
-                  html = f.read()
+              with open('user_data.json', 'r', encoding='utf-8') as f:
+                  data = json.load(f)
+              html = data.get('code', '<h1>Error loading code!</h1>')
+              icon = data.get('icon', 'null')
+              splash = data.get('splash', 'null')
           except:
-              html = '<h1>Welcome to Xtrweb!</h1>'
+              html = '<h1>JSON Data Error!</h1>'
+              icon = 'null'
+              splash = 'null'
 
           use_cam = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
@@ -64,6 +70,7 @@ jobs:
           cam_str = 'true' if use_cam else 'false'
           mic_str = 'true' if use_mic else 'false'
 
+          # 🚨 ম্যাজিক ফিক্স: স্প্ল্যাশ স্ক্রিন জোর করে হাইড করার কোড (Firebase Hang Fix)
           script = f"""
           <script>
           document.addEventListener('deviceready', function() {{
@@ -74,6 +81,10 @@ jobs:
               if (list.length > 0) {{
                   permissions.requestPermissions(list, function(){{}}, function(){{}});
               }}
+              
+              setTimeout(function() {{
+                 if(navigator.splashscreen) navigator.splashscreen.hide();
+              }}, 3000);
           }}, false);
           </script>
           """
@@ -87,30 +98,24 @@ jobs:
               f.write(html)
 
           os.makedirs('xtrapp/res', exist_ok=True)
-          icon = os.environ.get('ICON_URL', '').strip()
-          splash = os.environ.get('SPLASH_URL', '').strip()
 
           with open('xtrapp/config.xml', 'r', encoding='utf-8') as f:
               config = f.read()
               
           config = config.replace('<widget ', '<widget xmlns:android="http://schemas.android.com/apk/res/android" ')
 
-          # 🚨 ম্যাজিক ফিক্স: ফায়ারবেসের জন্য টাইম-আউট ১ ঘণ্টা (3600000ms) করে দেওয়া হলো!
-          timeout_fix = """
-          <preference name="loadUrlTimeoutValue" value="3600000" />
-          <preference name="KeepRunning" value="true" />
-          """
-          config = config.replace('</widget>', timeout_fix + '\n</widget>')
-
-          if icon and icon != 'null':
+          # 🚨 ছবি সেভ করা হচ্ছে
+          if icon != 'null':
               try:
-                  urllib.request.urlretrieve(icon, 'xtrapp/res/icon.png')
+                  with open('xtrapp/res/icon.png', 'wb') as f:
+                      f.write(base64.b64decode(icon + '==='))
                   config = config.replace('</widget>', '    <icon src="res/icon.png" />\n</widget>')
               except: pass
 
-          if splash and splash != 'null':
+          if splash != 'null':
               try:
-                  urllib.request.urlretrieve(splash, 'xtrapp/res/splash.png')
+                  with open('xtrapp/res/splash.png', 'wb') as f:
+                      f.write(base64.b64decode(splash + '==='))
                   s_xml = """
                   <preference name="AndroidWindowSplashScreenAnimatedIcon" value="res/splash.png" />
                   <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
@@ -120,6 +125,7 @@ jobs:
                   config = config.replace('</widget>', s_xml + '\n</widget>')
               except: pass
 
+          # 🚨 থিম এবং পারমিশন
           p_xml = '<platform name="android">\n'
           p_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@style/Theme.AppCompat.NoActionBar" />\n  </edit-config>\n'
           

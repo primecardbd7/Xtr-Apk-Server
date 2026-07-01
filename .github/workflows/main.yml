@@ -38,15 +38,14 @@ jobs:
           
           cordova create xtrapp "$PKG" "$APP"
           cd xtrapp
+          # 🚨 Android 12+ স্প্ল্যাশ স্ক্রিন ফুল স্ক্রিন করার জন্য Android 13 ব্যবহার করা হচ্ছে
           cordova platform add android@13.0.0
           cordova plugin add cordova-plugin-android-permissions
-          cordova plugin add cordova-plugin-file
 
-      - name: Process Code & Add Blob Download Magic 🚨
+      - name: Process Code, Image & Fix Hang (Full Screen Splash) 🚨
         env:
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
-          USE_STORAGE: ${{ github.event.client_payload.use_storage }}
         run: |
           cat << 'EOF' > process_app.py
           import os, json, base64
@@ -55,8 +54,9 @@ jobs:
               with open('user_data.json', 'r', encoding='utf-8') as f:
                   data = json.load(f)
               html = data.get('code', '<h1>Error loading code!</h1>')
-              icon = data.get('icon', 'null')
-              splash = data.get('splash', 'null')
+              # 🚨 ডেটা ক্লিনিং (স্পেস ও নতুন লাইন রিমুভ করা হচ্ছে)
+              icon = data.get('icon', 'null').replace('\n', '').strip()
+              splash = data.get('splash', 'null').replace('\n', '').strip()
           except:
               html = '<h1>JSON Data Error!</h1>'
               icon = 'null'
@@ -64,16 +64,13 @@ jobs:
 
           use_cam = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
-          use_storage = str(os.environ.get('USE_STORAGE', 'false')).lower() == 'true'
 
           if 'cordova.js' not in html:
               html = '<script src="cordova.js"></script>\n' + html
 
           cam_str = 'true' if use_cam else 'false'
           mic_str = 'true' if use_mic else 'false'
-          store_str = 'true' if use_storage else 'false'
 
-          # 🚨 ম্যাজিক স্ক্রিপ্ট: Blob ডেটা কনভার্ট করে গ্যালারিতে সেভ করা
           script = f"""
           <script>
           document.addEventListener('deviceready', function() {{
@@ -81,11 +78,6 @@ jobs:
               var list = [];
               if ({cam_str}) list.push(permissions.CAMERA);
               if ({mic_str}) list.push(permissions.RECORD_AUDIO);
-              if ({store_str}) {{
-                  list.push(permissions.WRITE_EXTERNAL_STORAGE);
-                  list.push(permissions.READ_EXTERNAL_STORAGE);
-              }}
-              
               if (list.length > 0) {{
                   permissions.requestPermissions(list, function(){{}}, function(){{}});
               }}
@@ -93,62 +85,6 @@ jobs:
               setTimeout(function() {{
                  if(navigator.splashscreen) navigator.splashscreen.hide();
               }}, 3000);
-
-              // 🚨 Blob File Download Logic
-              document.addEventListener('click', function(e) {{
-                  var target = e.target;
-                  while (target && target.tagName !== 'A') target = target.parentNode;
-                  
-                  if (target && target.hasAttribute('download')) {{
-                      e.preventDefault();
-                      var url = target.href;
-                      var filename = target.getAttribute('download') || 'downloaded_file';
-                      
-                      if (!{store_str}) {{
-                          alert("Please enable 'Download Photo/Video' permission to save files.");
-                          return;
-                      }}
-
-                      if (url.startsWith('blob:')) {{
-                          var xhr = new XMLHttpRequest();
-                          xhr.open('GET', url, true);
-                          xhr.responseType = 'blob';
-                          xhr.onload = function() {{
-                              var reader = new FileReader();
-                              reader.readAsDataURL(xhr.response);
-                              reader.onloadend = function() {{
-                                  var base64data = reader.result.split(',')[1];
-                                  saveBase64ToGallery(base64data, filename, xhr.response.type);
-                              }}
-                          }};
-                          xhr.send();
-                      }} else {{
-                          alert("Currently only Blob files from Firebase are supported.");
-                      }}
-                  }}
-              }});
-
-              function saveBase64ToGallery(b64Data, filename, contentType) {{
-                  var folder = cordova.file.externalRootDirectory + 'Download/';
-                  window.resolveLocalFileSystemURL(folder, function(dirEntry) {{
-                      dirEntry.getFile(filename, {{create: true, exclusive: false}}, function(fileEntry) {{
-                          fileEntry.createWriter(function(fileWriter) {{
-                              fileWriter.onwriteend = function() {{ alert('Successfully saved to Downloads folder!'); }};
-                              fileWriter.onerror = function(e) {{ alert('Failed to save file: ' + e.toString()); }};
-                              
-                              var byteCharacters = atob(b64Data);
-                              var byteArrays = [];
-                              for (var offset = 0; offset < byteCharacters.length; offset += 512) {{
-                                  var slice = byteCharacters.slice(offset, offset + 512);
-                                  var byteNumbers = new Array(slice.length);
-                                  for (var i = 0; i < slice.length; i++) byteNumbers[i] = slice.charCodeAt(i);
-                                  byteArrays.push(new Uint8Array(byteNumbers));
-                              }}
-                              fileWriter.write(new Blob(byteArrays, {{type: contentType}}));
-                          }});
-                      }});
-                  }});
-              }}
           }}, false);
           </script>
           """
@@ -162,25 +98,34 @@ jobs:
               f.write(html)
 
           os.makedirs('xtrapp/res', exist_ok=True)
-          icon = os.environ.get('ICON_URL', '').strip()
-          splash = os.environ.get('SPLASH_URL', '').strip()
 
           with open('xtrapp/config.xml', 'r', encoding='utf-8') as f:
               config = f.read()
               
           config = config.replace('<widget ', '<widget xmlns:android="http://schemas.android.com/apk/res/android" ')
 
-          if icon and icon != 'null':
+          timeout_fix = """
+          <preference name="loadUrlTimeoutValue" value="700000" />
+          <preference name="KeepRunning" value="true" />
+          <preference name="ErrorUrl" value="" />
+          """
+          config = config.replace('</widget>', timeout_fix + '\n</widget>')
+
+          # 🚨 আইকন ও স্প্ল্যাশ স্ক্রিন সেভ (প্যাডিং == যোগ করা হলো)
+          if icon != 'null':
               try:
                   with open('xtrapp/res/icon.png', 'wb') as f:
                       f.write(base64.b64decode(icon + '==='))
                   config = config.replace('</widget>', '    <icon src="res/icon.png" />\n</widget>')
-              except: pass
+              except Exception as e: 
+                  print('Icon Error:', e)
 
-          if splash and splash != 'null':
+          if splash != 'null':
               try:
                   with open('xtrapp/res/splash.png', 'wb') as f:
                       f.write(base64.b64decode(splash + '==='))
+                  
+                  # 🚨 ম্যাজিক ফিক্স: স্প্ল্যাশ স্ক্রিন ফুল স্ক্রিন করার কোড
                   s_xml = """
                   <preference name="AndroidWindowSplashScreenAnimatedIcon" value="res/splash.png" />
                   <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
@@ -188,20 +133,17 @@ jobs:
                   <preference name="ShowSplashScreenSpinner" value="false" />
                   """
                   config = config.replace('</widget>', s_xml + '\n</widget>')
-              except: pass
+              except Exception as e: 
+                  print('Splash Error:', e)
 
           p_xml = '<platform name="android">\n'
+          # ফুল স্ক্রিন থিম 
           p_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@style/Theme.AppCompat.NoActionBar" android:usesCleartextTraffic="true" />\n  </edit-config>\n'
           
           if use_cam:
               p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n  </config-file>\n'
           if use_mic:
               p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n  </config-file>\n'
-          
-          # 🚨 স্টোরেজ পারমিশন
-          if str(os.environ.get('USE_STORAGE', 'false')).lower() == 'true':
-              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n  </config-file>\n'
-
           p_xml += '</platform>'
 
           config = config.replace('</widget>', p_xml + '\n</widget>')

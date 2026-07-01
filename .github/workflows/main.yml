@@ -30,10 +30,8 @@ jobs:
         run: |
           PKG="${{ github.event.client_payload.package_name }}"
           APP="${{ github.event.client_payload.app_name }}"
-          
           PKG=$(echo "$PKG" | tr -d ' ' | tr -d '"' | tr -d "'")
           APP=$(echo "$APP" | tr -d '"' | tr -d "'")
-          
           if [[ "$PKG" != *.* ]]; then
             PKG="com.xtrweb.$PKG"
           fi
@@ -43,17 +41,14 @@ jobs:
           cordova platform add android@13.0.0
           cordova plugin add cordova-plugin-android-permissions
 
-      - name: Process Code, Images & Permissions
+      - name: Process Code & Fix Time-Out Error
         env:
-          ICON_URL: ${{ github.event.client_payload.icon_url }}
-          SPLASH_URL: ${{ github.event.client_payload.splash_url }}
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
         run: |
           cat << 'EOF' > process_app.py
           import os, urllib.request
 
-          # 1. HTML & Script
           try:
               with open('current_build.html', 'r', encoding='utf-8') as f:
                   html = f.read()
@@ -91,7 +86,6 @@ jobs:
           with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
               f.write(html)
 
-          # 2. Images Setup
           os.makedirs('xtrapp/res', exist_ok=True)
           icon = os.environ.get('ICON_URL', '').strip()
           splash = os.environ.get('SPLASH_URL', '').strip()
@@ -100,6 +94,13 @@ jobs:
               config = f.read()
               
           config = config.replace('<widget ', '<widget xmlns:android="http://schemas.android.com/apk/res/android" ')
+
+          # 🚨 ম্যাজিক ফিক্স: ফায়ারবেসের জন্য টাইম-আউট ১ ঘণ্টা (3600000ms) করে দেওয়া হলো!
+          timeout_fix = """
+          <preference name="loadUrlTimeoutValue" value="3600000" />
+          <preference name="KeepRunning" value="true" />
+          """
+          config = config.replace('</widget>', timeout_fix + '\n</widget>')
 
           if icon and icon != 'null':
               try:
@@ -119,7 +120,6 @@ jobs:
                   config = config.replace('</widget>', s_xml + '\n</widget>')
               except: pass
 
-          # 3. Permissions & Safe Theme
           p_xml = '<platform name="android">\n'
           p_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@style/Theme.AppCompat.NoActionBar" />\n  </edit-config>\n'
           

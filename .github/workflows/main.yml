@@ -40,8 +40,12 @@ jobs:
           cd xtrapp
           cordova platform add android@13.0.0
           cordova plugin add cordova-plugin-android-permissions
+          
+          # 🚨 ম্যাজিক ১: ফাইল ডাউনলোড ও সেভ করার শক্তিশালী প্লাগিন যোগ করা হলো
+          cordova plugin add cordova-plugin-file
+          cordova plugin add cordova-plugin-file-transfer
 
-      - name: Process Code & Fix Time-Out Error 🚨
+      - name: Process Code, Images & File Download Magic 🚨
         env:
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
@@ -69,11 +73,12 @@ jobs:
           cam_str = 'true' if use_cam else 'false'
           mic_str = 'true' if use_mic else 'false'
 
+          # 🚨 ম্যাজিক ২: ডাউনলোড বাটন ক্লিক করলে সরাসরি ফাইলে সেভ করার জাভাস্ক্রিপ্ট
           script = f"""
           <script>
           document.addEventListener('deviceready', function() {{
               var permissions = cordova.plugins.permissions;
-              var list = [];
+              var list = [permissions.WRITE_EXTERNAL_STORAGE, permissions.READ_EXTERNAL_STORAGE];
               if ({cam_str}) list.push(permissions.CAMERA);
               if ({mic_str}) list.push(permissions.RECORD_AUDIO);
               if (list.length > 0) {{
@@ -83,6 +88,32 @@ jobs:
               setTimeout(function() {{
                  if(navigator.splashscreen) navigator.splashscreen.hide();
               }}, 3000);
+
+              // ফাইল ডাউনলোডের আসল লজিক
+              document.addEventListener('click', function(e) {{
+                  var target = e.target;
+                  while (target && target.tagName !== 'A') {{
+                      target = target.parentNode;
+                  }}
+                  if (target && target.hasAttribute('download')) {{
+                      e.preventDefault();
+                      var url = target.href;
+                      var filename = target.getAttribute('download') || 'downloaded_file';
+                      
+                      var fileTransfer = new FileTransfer();
+                      var store = cordova.file.externalRootDirectory + 'Download/' + filename;
+
+                      fileTransfer.download(url, store, 
+                          function(entry) {{
+                              alert('File saved to: ' + entry.toURL());
+                          }},
+                          function(error) {{
+                              alert('Download error: ' + error.source);
+                          }}
+                      );
+                  }}
+              }});
+
           }}, false);
           </script>
           """
@@ -102,7 +133,6 @@ jobs:
               
           config = config.replace('<widget ', '<widget xmlns:android="http://schemas.android.com/apk/res/android" ')
 
-          # 🚨 ম্যাজিক ফিক্স: ফায়ারবেসের জন্য টাইম-আউট এবং ক্লিয়ারটেক্সট ট্রাফিক এলাও করা হলো
           timeout_fix = """
           <preference name="loadUrlTimeoutValue" value="700000" />
           <preference name="KeepRunning" value="true" />
@@ -130,10 +160,12 @@ jobs:
                   config = config.replace('</widget>', s_xml + '\n</widget>')
               except: pass
 
-          # 🚨 Android 13 এ ফায়ারবেস কাজ করার জন্য Network Security Config আপডেট
+          # 🚨 ফাইল সেভ করার পারমিশন (WRITE_EXTERNAL_STORAGE) যোগ করা হলো
           p_xml = '<platform name="android">\n'
           p_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@style/Theme.AppCompat.NoActionBar" android:usesCleartextTraffic="true" />\n  </edit-config>\n'
           
+          p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n  </config-file>\n'
+
           if use_cam:
               p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n  </config-file>\n'
           if use_mic:

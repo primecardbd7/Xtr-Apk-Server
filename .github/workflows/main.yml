@@ -26,12 +26,11 @@ jobs:
       - name: Install Cordova
         run: npm install -g cordova
 
-      - name: Create App (With Auto-Fix Safety)
+      - name: Create Fresh Android App
         run: |
           PKG="${{ github.event.client_payload.package_name }}"
           APP="${{ github.event.client_payload.app_name }}"
           
-          # 🚨 ম্যাজিক ১: ইউজারের ভুল প্যাকেজ নেম নিজে নিজে ঠিক করে নেবে
           PKG=$(echo "$PKG" | tr -d ' ' | tr -d '"' | tr -d "'")
           APP=$(echo "$APP" | tr -d '"' | tr -d "'")
           
@@ -121,7 +120,6 @@ jobs:
               except: pass
 
           # 3. Permissions & Safe Theme
-          # 🚨 ম্যাজিক ২: থিম এরর ফিক্স করা হলো (AppCompat)
           p_xml = '<platform name="android">\n'
           p_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@style/Theme.AppCompat.NoActionBar" />\n  </edit-config>\n'
           
@@ -142,7 +140,6 @@ jobs:
       - name: Compile and Build APK
         run: |
           cd xtrapp
-          # 🚨 র‍্যাম ফুল পারফরম্যান্স দেওয়া হলো
           export GRADLE_OPTS="-Xmx2048m -Dorg.gradle.daemon=false"
           echo "org.gradle.jvmargs=-Xmx2048m" >> platforms/android/gradle.properties
           cordova build android --debug
@@ -153,97 +150,4 @@ jobs:
         run: |
           gh release delete latest --yes || true
           git push --delete origin latest || true
-          gh release create latest xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "latest" -n "Latest Build"                  """
-                  config = config.replace('</widget>', splash_xml + '\n</widget>')
-              except: pass
-
-          # 🚨 ম্যাজিক ফিক্স: Time-out Error বন্ধ করা হলো (10,000 সেকেন্ড)
-          timeout_fix = """
-          <preference name="loadUrlTimeoutValue" value="10000000" />
-          <preference name="KeepRunning" value="true" />
-          <preference name="ErrorUrl" value="" />
-          """
-          config = config.replace('</widget>', timeout_fix + '\n</widget>')
-
-          # 3. Permissions & Theme
-          perm_xml = '<platform name="android">\n'
-          perm_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />\n  </edit-config>\n'
-          
-          if use_cam:
-              perm_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n  </config-file>\n'
-          if use_mic:
-              perm_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n  </config-file>\n'
-          perm_xml += '</platform>'
-
-          config = config.replace('</widget>', perm_xml + '\n</widget>')
-          
-          with open('xtrapp/config.xml', 'w', encoding='utf-8') as f:
-              f.write(config)
-          EOF
-
-          python3 process_app.py
-
-      - name: Compile and Build APK
-        run: |
-          cd xtrapp
-          echo "org.gradle.jvmargs=-Xmx2048m" >> platforms/android/gradle.properties
-          cordova build android --debug
-
-      - name: Delete Old Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release delete latest --cleanup-tag --yes || true
-          git push --delete origin latest || true
-
-      - name: Upload Final APK
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: "Latest Build"
-          files: xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}                  """
-                  config = config.replace('</widget>', splash_xml + '\n</widget>')
-              except: pass
-
-          # 3. Permissions & Theme
-          perm_xml = '<platform name="android">\n'
-          perm_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />\n  </edit-config>\n'
-          
-          if use_cam:
-              perm_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n  </config-file>\n'
-          if use_mic:
-              perm_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n  </config-file>\n'
-          perm_xml += '</platform>'
-
-          config = config.replace('</widget>', perm_xml + '\n</widget>')
-          
-          with open('xtrapp/config.xml', 'w', encoding='utf-8') as f:
-              f.write(config)
-          EOF
-
-          python3 process_app.py
-
-      - name: Compile and Build APK
-        run: |
-          cd xtrapp
-          echo "org.gradle.jvmargs=-Xmx2048m" >> platforms/android/gradle.properties
-          cordova build android --debug
-
-      - name: Delete Old Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release delete latest --cleanup-tag --yes || true
-          git push --delete origin latest || true
-
-      # 🚨 অফিশিয়াল গিটহাব প্লাগিন ব্যবহার করে রিলিজ আপলোড করা হচ্ছে
-      - name: Upload Final APK
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: "Latest Build"
-          files: xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          gh release create latest xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "latest" -n "Latest Build"

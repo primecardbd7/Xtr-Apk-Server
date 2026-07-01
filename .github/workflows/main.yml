@@ -41,7 +41,7 @@ jobs:
           cordova platform add android@13.0.0
           cordova plugin add cordova-plugin-android-permissions
 
-      - name: Process App Data (Code, Image & Fix Hang)
+      - name: Process Code & Fix Time-Out Error 🚨
         env:
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
@@ -49,7 +49,6 @@ jobs:
           cat << 'EOF' > process_app.py
           import os, json, base64
 
-          # 🚨 JSON ফাইল থেকে সরাসরি কোড ও ছবি পড়া হচ্ছে
           try:
               with open('user_data.json', 'r', encoding='utf-8') as f:
                   data = json.load(f)
@@ -70,7 +69,6 @@ jobs:
           cam_str = 'true' if use_cam else 'false'
           mic_str = 'true' if use_mic else 'false'
 
-          # 🚨 ম্যাজিক ফিক্স: স্প্ল্যাশ স্ক্রিন জোর করে হাইড করার কোড (Firebase Hang Fix)
           script = f"""
           <script>
           document.addEventListener('deviceready', function() {{
@@ -104,7 +102,14 @@ jobs:
               
           config = config.replace('<widget ', '<widget xmlns:android="http://schemas.android.com/apk/res/android" ')
 
-          # 🚨 ছবি সেভ করা হচ্ছে
+          # 🚨 ম্যাজিক ফিক্স: ফায়ারবেসের জন্য টাইম-আউট এবং ক্লিয়ারটেক্সট ট্রাফিক এলাও করা হলো
+          timeout_fix = """
+          <preference name="loadUrlTimeoutValue" value="700000" />
+          <preference name="KeepRunning" value="true" />
+          <preference name="ErrorUrl" value="" />
+          """
+          config = config.replace('</widget>', timeout_fix + '\n</widget>')
+
           if icon != 'null':
               try:
                   with open('xtrapp/res/icon.png', 'wb') as f:
@@ -125,9 +130,9 @@ jobs:
                   config = config.replace('</widget>', s_xml + '\n</widget>')
               except: pass
 
-          # 🚨 থিম এবং পারমিশন
+          # 🚨 Android 13 এ ফায়ারবেস কাজ করার জন্য Network Security Config আপডেট
           p_xml = '<platform name="android">\n'
-          p_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@style/Theme.AppCompat.NoActionBar" />\n  </edit-config>\n'
+          p_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@style/Theme.AppCompat.NoActionBar" android:usesCleartextTraffic="true" />\n  </edit-config>\n'
           
           if use_cam:
               p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n  </config-file>\n'

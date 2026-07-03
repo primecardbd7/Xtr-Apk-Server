@@ -38,25 +38,25 @@ jobs:
           
           cordova create xtrapp "$PKG" "$APP"
           cd xtrapp
-          # 🚨 Android 12+ স্প্ল্যাশ স্ক্রিন ফুল স্ক্রিন করার জন্য Android 13 ব্যবহার করা হচ্ছে
           cordova platform add android@13.0.0
           cordova plugin add cordova-plugin-android-permissions
+          cordova plugin add cordova-plugin-file
 
-      - name: Process Code, Image & Fix Hang (Full Screen Splash) 🚨
+      - name: Process Code, Full-Screen Splash & All Permissions 🚨
         env:
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
+          USE_STORAGE: ${{ github.event.client_payload.use_storage }}
         run: |
           cat << 'EOF' > process_app.py
-          import os, json, base64
+          import os, json, base64, re
 
           try:
               with open('user_data.json', 'r', encoding='utf-8') as f:
                   data = json.load(f)
               html = data.get('code', '<h1>Error loading code!</h1>')
-              # 🚨 ডেটা ক্লিনিং (স্পেস ও নতুন লাইন রিমুভ করা হচ্ছে)
-              icon = data.get('icon', 'null').replace('\n', '').strip()
-              splash = data.get('splash', 'null').replace('\n', '').strip()
+              icon = data.get('icon', 'null')
+              splash = data.get('splash', 'null')
           except:
               html = '<h1>JSON Data Error!</h1>'
               icon = 'null'
@@ -64,13 +64,16 @@ jobs:
 
           use_cam = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
+          use_storage = str(os.environ.get('USE_STORAGE', 'false')).lower() == 'true'
 
           if 'cordova.js' not in html:
               html = '<script src="cordova.js"></script>\n' + html
 
           cam_str = 'true' if use_cam else 'false'
           mic_str = 'true' if use_mic else 'false'
+          store_str = 'true' if use_storage else 'false'
 
+          # 🚨 ১. গ্যালারি পারমিশন (Android 10, 11, 12, 13, 14 সব ফোনের জন্য)
           script = f"""
           <script>
           document.addEventListener('deviceready', function() {{
@@ -78,13 +81,18 @@ jobs:
               var list = [];
               if ({cam_str}) list.push(permissions.CAMERA);
               if ({mic_str}) list.push(permissions.RECORD_AUDIO);
-              if (list.length > 0) {{
-                  permissions.requestPermissions(list, function(){{}}, function(){{}});
+              if ({store_str}) {{
+                  list.push('android.permission.READ_MEDIA_IMAGES');
+                  list.push('android.permission.READ_MEDIA_VIDEO');
+                  list.push(permissions.WRITE_EXTERNAL_STORAGE);
+                  list.push(permissions.READ_EXTERNAL_STORAGE);
               }}
               
-              setTimeout(function() {{
-                 if(navigator.splashscreen) navigator.splashscreen.hide();
-              }}, 3000);
+              if (list.length > 0) {{
+                  permissions.requestPermissions(list, function(status) {{
+                      console.log('Permission Success');
+                  }}, function() {{}});
+              }}
           }}, false);
           </script>
           """
@@ -93,57 +101,66 @@ jobs:
               html = html.replace('</body>', script + '\n</body>')
           else:
               html += script
-              
-          with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
-              f.write(html)
 
           os.makedirs('xtrapp/res', exist_ok=True)
+          os.makedirs('xtrapp/www', exist_ok=True)
+
+          # 🚨 ২. ছবি সেভ করা ও ১০০% ফুল-স্ক্রিন স্প্ল্যাশ স্ক্রিন ম্যাজিক
+          if splash != 'null':
+              try:
+                  with open('xtrapp/www/splash.png', 'wb') as f:
+                      f.write(base64.b64decode(splash + '==='))
+                  
+                  # ছবিটাকে একদম ফুল স্ক্রিন জুড়ে দেখানোর HTML কোড
+                  full_splash_html = '''
+                  <div id="xtr_full_splash" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:999999999; background: #FFFFFF url('splash.png') no-repeat center center; background-size: 100% 100%;"></div>
+                  <script>
+                  setTimeout(function() {
+                      var el = document.getElementById('xtr_full_splash');
+                      if(el) el.style.display = 'none';
+                  }, 3000);
+                  </script>
+                  '''
+                  if '<body' in html.lower():
+                      html = re.sub(r'(<body[^>]*>)', r'\1' + full_splash_html, html, count=1, flags=re.IGNORECASE)
+                  else:
+                      html = full_splash_html + html
+              except Exception as e: pass
+
+          with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
+              f.write(html)
 
           with open('xtrapp/config.xml', 'r', encoding='utf-8') as f:
               config = f.read()
               
           config = config.replace('<widget ', '<widget xmlns:android="http://schemas.android.com/apk/res/android" ')
 
+          # ফায়ারবেস টাইম-আউট ফিক্স
           timeout_fix = """
           <preference name="loadUrlTimeoutValue" value="700000" />
           <preference name="KeepRunning" value="true" />
-          <preference name="ErrorUrl" value="" />
+          <preference name="ShowSplashScreenSpinner" value="false" />
           """
           config = config.replace('</widget>', timeout_fix + '\n</widget>')
 
-          # 🚨 আইকন ও স্প্ল্যাশ স্ক্রিন সেভ (প্যাডিং == যোগ করা হলো)
           if icon != 'null':
               try:
                   with open('xtrapp/res/icon.png', 'wb') as f:
                       f.write(base64.b64decode(icon + '==='))
                   config = config.replace('</widget>', '    <icon src="res/icon.png" />\n</widget>')
-              except Exception as e: 
-                  print('Icon Error:', e)
+              except: pass
 
-          if splash != 'null':
-              try:
-                  with open('xtrapp/res/splash.png', 'wb') as f:
-                      f.write(base64.b64decode(splash + '==='))
-                  
-                  # 🚨 ম্যাজিক ফিক্স: স্প্ল্যাশ স্ক্রিন ফুল স্ক্রিন করার কোড
-                  s_xml = """
-                  <preference name="AndroidWindowSplashScreenAnimatedIcon" value="res/splash.png" />
-                  <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
-                  <preference name="SplashScreenDelay" value="3000" />
-                  <preference name="ShowSplashScreenSpinner" value="false" />
-                  """
-                  config = config.replace('</widget>', s_xml + '\n</widget>')
-              except Exception as e: 
-                  print('Splash Error:', e)
-
+          # ৩. AndroidManifest.xml এ পারমিশন হার্ডকোড করা
           p_xml = '<platform name="android">\n'
-          # ফুল স্ক্রিন থিম 
           p_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@style/Theme.AppCompat.NoActionBar" android:usesCleartextTraffic="true" />\n  </edit-config>\n'
           
           if use_cam:
-              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n  </config-file>\n'
+              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.CAMERA" />\n  </config-file>\n'
           if use_mic:
-              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n  </config-file>\n'
+              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n  </config-file>\n'
+          if use_storage:
+              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\n    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n  </config-file>\n'
+
           p_xml += '</platform>'
 
           config = config.replace('</widget>', p_xml + '\n</widget>')

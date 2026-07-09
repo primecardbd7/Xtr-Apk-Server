@@ -23,239 +23,134 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Cache Cordova and Gradle
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.npm
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-build-cache
+
       - name: Install Cordova
         run: npm install -g cordova
 
       - name: Create Fresh Android App
         run: |
-          PKG="${{ github.event.client_payload.package_name }}"
-          APP="${{ github.event.client_payload.app_name }}"
-          PKG=$(echo "$PKG" | tr -d ' ' | tr -d '"' | tr -d "'")
-          APP=$(echo "$APP" | tr -d '"' | tr -d "'")
-          if [[ "$PKG" != *.* ]]; then
-            PKG="com.xtrweb.$PKG"
-          fi
-          
-          cordova create xtrapp "$PKG" "$APP"
+          cordova create xtrapp "${{ github.event.client_payload.package_name }}" "${{ github.event.client_payload.app_name }}"
           cd xtrapp
           cordova platform add android@13.0.0
           cordova plugin add cordova-plugin-android-permissions
-          cordova plugin add cordova-plugin-file
-          cordova plugin add cordova-plugin-file-transfer
-          cordova plugin add cordova-plugin-statusbar
 
-      - name: Process Code, Full-Screen Splash, Status Bar & Download Magic
+      - name: Inject User HTML & Auto Permission Script
         env:
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
-          USE_STORAGE: ${{ github.event.client_payload.use_storage }}
-          STATUS_BAR_COLOR: ${{ github.event.client_payload.status_bar_color }}
-          ICON_URL: ${{ github.event.client_payload.icon_url }}
-          SPLASH_URL: ${{ github.event.client_payload.splash_url }}
         run: |
-          cat << 'EOF' > process_app.py
-          import os, json, base64, re
-
+          python3 -c "
+          import os
+          
           try:
-              with open('user_data.json', 'r', encoding='utf-8') as f:
-                  data = json.load(f)
-              html = data.get('code', '<h1>Error loading code!</h1>')
-          except:
-              html = '<h1>JSON Data Error!</h1>'
+              html_data = open('current_build.html', 'r', encoding='utf-8').read()
+          except Exception:
+              html_data = '<h1>Error loading code!</h1>'
 
-          use_cam = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
+          use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
-          use_storage = str(os.environ.get('USE_STORAGE', 'false')).lower() == 'true'
-          status_color = os.environ.get('STATUS_BAR_COLOR', '#0D6EFD')
-          icon_b64 = os.environ.get('ICON_URL', 'null').strip()
-          splash_b64 = os.environ.get('SPLASH_URL', 'null').strip()
 
-          if 'cordova.js' not in html:
-              html = '<script src="cordova.js"></script>\n' + html
+          if 'cordova.js' not in html_data:
+              html_data = '<script src=\"cordova.js\"></script>\n' + html_data
 
-          cam_str = 'true' if use_cam else 'false'
-          mic_str = 'true' if use_mic else 'false'
-          store_str = 'true' if use_storage else 'false'
-
-          script = f"""
+          permission_script = f'''
           <script>
           document.addEventListener('deviceready', function() {{
-              if(StatusBar) {{
-                  StatusBar.backgroundColorByHexString('{status_color}');
-                  StatusBar.styleLightContent();
-              }}
-
               var permissions = cordova.plugins.permissions;
               var list = [];
-              if ({cam_str}) list.push(permissions.CAMERA);
-              if ({mic_str}) list.push(permissions.RECORD_AUDIO);
-              if ({store_str}) {{
-                  list.push('android.permission.READ_MEDIA_IMAGES');
-                  list.push('android.permission.READ_MEDIA_VIDEO');
-                  list.push(permissions.WRITE_EXTERNAL_STORAGE);
-                  list.push(permissions.READ_EXTERNAL_STORAGE);
-              }}
+              if ({str(use_camera).lower()}) list.push(permissions.CAMERA);
+              if ({str(use_mic).lower()}) list.push(permissions.RECORD_AUDIO);
               if (list.length > 0) {{
                   permissions.requestPermissions(list, function(){{}}, function(){{}});
               }}
-              
-              setTimeout(function() {{
-                 if(navigator.splashscreen) navigator.splashscreen.hide();
-              }}, 3000);
-
-              document.addEventListener('click', function(e) {{
-                  var target = e.target;
-                  while (target && target.tagName !== 'A') target = target.parentNode;
-                  
-                  if (target && target.hasAttribute('download')) {{
-                      e.preventDefault();
-                      var url = target.href;
-                      var filename = target.getAttribute('download') || 'downloaded_file';
-                      
-                      if (!{store_str}) {{
-                          alert("Please enable 'Download Photo/Video' permission to save files.");
-                          return;
-                      }}
-
-                      if (url.startsWith('http')) {{
-                          var ft = new FileTransfer();
-                          var store = cordova.file.externalRootDirectory + 'Download/' + filename;
-                          ft.download(url, store, function(entry) {{
-                              alert('File successfully saved to Downloads folder!');
-                          }}, function(err) {{
-                              alert('Error saving file!');
-                          }});
-                      }} else if (url.startsWith('blob:')) {{
-                          var xhr = new XMLHttpRequest();
-                          xhr.open('GET', url, true);
-                          xhr.responseType = 'blob';
-                          xhr.onload = function() {{
-                              var reader = new FileReader();
-                              reader.readAsDataURL(xhr.response);
-                              reader.onloadend = function() {{
-                                  var base64data = reader.result.split(',')[1];
-                                  saveBase64ToGallery(base64data, filename, xhr.response.type);
-                              }}
-                          }};
-                          xhr.send();
-                      }}
-                  }}
-              }});
-
-              function saveBase64ToGallery(b64Data, filename, contentType) {{
-                  var folder = cordova.file.externalRootDirectory + 'Download/';
-                  window.resolveLocalFileSystemURL(folder, function(dirEntry) {{
-                      dirEntry.getFile(filename, {{create: true, exclusive: false}}, function(fileEntry) {{
-                          fileEntry.createWriter(function(fileWriter) {{
-                              fileWriter.onwriteend = function() {{ alert('Successfully saved to Downloads folder!'); }};
-                              fileWriter.onerror = function() {{ alert('Failed to save file.'); }};
-                              var byteCharacters = atob(b64Data);
-                              var byteArrays = [];
-                              for (var offset = 0; offset < byteCharacters.length; offset += 512) {{
-                                  var slice = byteCharacters.slice(offset, offset + 512);
-                                  var byteNumbers = new Array(slice.length);
-                                  for (var i = 0; i < slice.length; i++) byteNumbers[i] = slice.charCodeAt(i);
-                                  byteArrays.push(new Uint8Array(byteNumbers));
-                              }}
-                              fileWriter.write(new Blob(byteArrays, {{type: contentType}}));
-                          }});
-                      }});
-                  }});
-              }}
           }}, false);
-          
-          window.onload = function() {{
-              setTimeout(function() {{
-                  if(navigator.splashscreen) navigator.splashscreen.hide();
-                  var el = document.getElementById('xtr_full_splash');
-                  if(el) el.style.display = 'none';
-              }}, 4000);
-          }};
           </script>
-          """
+          '''
           
-          if '</body>' in html:
-              html = html.replace('</body>', script + '\n</body>')
+          if '</body>' in html_data:
+              html_data = html_data.replace('</body>', permission_script + '\n</body>')
           else:
-              html += script
-
-          os.makedirs('xtrapp/res', exist_ok=True)
-          os.makedirs('xtrapp/www', exist_ok=True)
-
-          # 🚨 স্প্ল্যাশ স্ক্রিন ফিক্স (অরিজিনাল বডি ফোল্ডারে সেভ করা হচ্ছে)
-          if splash_b64 != 'null':
-              try:
-                  with open('xtrapp/www/splash.png', 'wb') as f:
-                      f.write(base64.b64decode(splash_b64 + '==='))
-                  full_splash_html = '''
-                  <div id="xtr_full_splash" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:999999999; background: #FFFFFF url('splash.png') no-repeat center center; background-size: 100% 100%;"></div>
-                  <script>
-                  setTimeout(function() {
-                      var el = document.getElementById('xtr_full_splash');
-                      if(el) el.style.display = 'none';
-                  }, 3000);
-                  </script>
-                  '''
-                  if '<body' in html.lower():
-                      html = re.sub(r'(<body[^>]*>)', r'\1' + full_splash_html, html, count=1, flags=re.IGNORECASE)
-                  else:
-                      html = full_splash_html + html
-              except Exception as e: pass
-
-          with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
-              f.write(html)
-
-          with open('xtrapp/config.xml', 'r', encoding='utf-8') as f:
-              config = f.read()
+              html_data += permission_script
               
+          with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
+              f.write(html_data)
+          "
+
+      - name: Download Images & Configure App
+        env:
+          ICON_URL: ${{ github.event.client_payload.icon_url }}
+          SPLASH_URL: ${{ github.event.client_payload.splash_url }}
+          USE_CAMERA: ${{ github.event.client_payload.use_camera }}
+          USE_MIC: ${{ github.event.client_payload.use_mic }}
+        run: |
+          python3 -c "
+          import os, urllib.request
+          os.makedirs('xtrapp/res', exist_ok=True)
+          
+          icon_url = os.environ.get('ICON_URL', '').strip()
+          splash_url = os.environ.get('SPLASH_URL', '').strip()
+          use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
+          use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
+          
+          config = open('xtrapp/config.xml', 'r', encoding='utf-8').read()
           config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
-          timeout_fix = """
-          <preference name="loadUrlTimeoutValue" value="700000" />
-          <preference name="KeepRunning" value="true" />
-          """
-          config = config.replace('</widget>', timeout_fix + '\n</widget>')
+          try:
+              if icon_url and icon_url != 'null':
+                  urllib.request.urlretrieve(icon_url, 'xtrapp/res/icon.png')
+                  config = config.replace('</widget>', '    <icon src=\"res/icon.png\" />\n</widget>')
+          except: pass
 
-          # 🚨 আইকন ফিক্স (ডাইরেক্ট বেস-৬৪ সেভ করা হচ্ছে)
-          if icon_b64 != 'null':
-              try:
-                  with open('xtrapp/res/icon.png', 'wb') as f:
-                      f.write(base64.b64decode(icon_b64 + '==='))
-                  config = config.replace('</widget>', '    <icon src="res/icon.png" />\n</widget>')
-              except Exception as e: pass
+          try:
+              if splash_url and splash_url != 'null':
+                  urllib.request.urlretrieve(splash_url, 'xtrapp/res/splash.png')
+                  splash_xml = '''
+                  <preference name=\"AndroidWindowSplashScreenAnimatedIcon\" value=\"res/splash.png\" />
+                  <preference name=\"AndroidWindowSplashScreenBackground\" value=\"#FFFFFF\" />
+                  <preference name=\"SplashScreenDelay\" value=\"3000\" />
+                  <preference name=\"ShowSplashScreenSpinner\" value=\"false\" />
+                  '''
+                  config = config.replace('</widget>', splash_xml + '\n</widget>')
+          except: pass
 
-          p_xml = '<platform name="android">\n'
-          p_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@style/Theme.AppCompat.NoActionBar" android:usesCleartextTraffic="true" />\n  </edit-config>\n'
-          
-          if use_cam:
-              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n  </config-file>\n'
+          perm_xml = '<platform name=\"android\">\n'
+          perm_xml += '  <edit-config file=\"app/src/main/AndroidManifest.xml\" mode=\"merge\" target=\"/manifest/application\">\n    <application android:theme=\"@android:style/Theme.DeviceDefault.NoActionBar\" />\n  </edit-config>\n'
+          if use_camera:
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />\n  </config-file>\n'
           if use_mic:
-              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n  </config-file>\n'
-          if use_storage:
-              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n  </config-file>\n'
-          p_xml += '</platform>'
+              perm_xml += '  <config-file target=\"AndroidManifest.xml\" parent=\"/*\">\n    <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />\n    <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\" />\n  </config-file>\n'
+          perm_xml += '</platform>'
 
-          config = config.replace('</widget>', p_xml + '\n</widget>')
-          with open('xtrapp/config.xml', 'w', encoding='utf-8') as f:
-              f.write(config)
-          EOF
-          
-          python3 process_app.py
+          config = config.replace('</widget>', perm_xml + '\n</widget>')
+          open('xtrapp/config.xml', 'w', encoding='utf-8').write(config)
+          "
 
       - name: Compile and Build APK
         run: |
           cd xtrapp
-          export GRADLE_OPTS="-Xmx2048m -Dorg.gradle.daemon=false"
           echo "org.gradle.jvmargs=-Xmx2048m" >> platforms/android/gradle.properties
           cordova build android --debug
 
-      # 🚨 ইউনিক রিলিজ তৈরি করার ম্যাজিক (ক্যাশ বাইপাস)
-      - name: Release Unique APK
+      # 🚨 ম্যাজিক ফিক্স: অ্যাপের নাম দিয়ে ইউনিক (Unique) রিলিজ তৈরি করা হচ্ছে!
+      - name: Release Unique APK via API
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APP_NAME: ${{ github.event.client_payload.app_name }}
-          TIMESTAMP: ${{ github.event.client_payload.timestamp }}
         run: |
+          # নামের স্পেস সরিয়ে আন্ডারস্কোর করা হলো
           SAFE_NAME=$(echo "$APP_NAME" | tr -d ' ' | tr -d '"' | tr -d "'")
-          mv xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk "xtrapp/platforms/android/app/build/outputs/apk/debug/${SAFE_NAME}_XtrStudio.apk"
-          gh release create "build_${TIMESTAMP}" "xtrapp/platforms/android/app/build/outputs/apk/debug/${SAFE_NAME}_XtrStudio.apk" -t "build_${TIMESTAMP}" -n "Build ${APP_NAME}"
+          
+          # পুরনো রিলিজ থাকলে মুছে দেওয়া হবে
+          gh api -X DELETE /repos/${{ github.repository }}/git/refs/tags/$SAFE_NAME || true
+          gh release delete $SAFE_NAME -y -R ${{ github.repository }} || true
+          
+          # নতুন ইউনিক নামে APK আপলোড
+          gh release create $SAFE_NAME xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "$SAFE_NAME" -n "Build for $APP_NAME" -R ${{ github.repository }}

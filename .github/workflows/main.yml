@@ -44,12 +44,14 @@ jobs:
           cordova plugin add cordova-plugin-file-transfer
           cordova plugin add cordova-plugin-statusbar
 
-      - name: Process Code, Full-Screen Splash, Status Bar & Download Magic 🚨
+      - name: Process Code, Full-Screen Splash, Status Bar & Download Magic
         env:
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
           USE_STORAGE: ${{ github.event.client_payload.use_storage }}
           STATUS_BAR_COLOR: ${{ github.event.client_payload.status_bar_color }}
+          ICON_URL: ${{ github.event.client_payload.icon_url }}
+          SPLASH_URL: ${{ github.event.client_payload.splash_url }}
         run: |
           cat << 'EOF' > process_app.py
           import os, json, base64, re
@@ -58,17 +60,15 @@ jobs:
               with open('user_data.json', 'r', encoding='utf-8') as f:
                   data = json.load(f)
               html = data.get('code', '<h1>Error loading code!</h1>')
-              icon = data.get('icon', 'null')
-              splash = data.get('splash', 'null')
           except:
               html = '<h1>JSON Data Error!</h1>'
-              icon = 'null'
-              splash = 'null'
 
           use_cam = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
           use_storage = str(os.environ.get('USE_STORAGE', 'false')).lower() == 'true'
           status_color = os.environ.get('STATUS_BAR_COLOR', '#0D6EFD')
+          icon_b64 = os.environ.get('ICON_URL', 'null').strip()
+          splash_b64 = os.environ.get('SPLASH_URL', 'null').strip()
 
           if 'cordova.js' not in html:
               html = '<script src="cordova.js"></script>\n' + html
@@ -99,7 +99,6 @@ jobs:
                   permissions.requestPermissions(list, function(){{}}, function(){{}});
               }}
               
-              // 🚨 ম্যাজিক ফিক্স: স্প্ল্যাশ স্ক্রিন জোর করে ৩ সেকেন্ড পর সরানো হবে
               setTimeout(function() {{
                  if(navigator.splashscreen) navigator.splashscreen.hide();
               }}, 3000);
@@ -165,7 +164,6 @@ jobs:
               }}
           }}, false);
           
-          // 🚨 ফলব্যাক: যদি deviceready ফায়ার না হয় (Firebase এর কারণে), তবুও স্প্ল্যাশ স্ক্রিন হাইড হবে!
           window.onload = function() {{
               setTimeout(function() {{
                   if(navigator.splashscreen) navigator.splashscreen.hide();
@@ -184,10 +182,11 @@ jobs:
           os.makedirs('xtrapp/res', exist_ok=True)
           os.makedirs('xtrapp/www', exist_ok=True)
 
-          if splash != 'null':
+          # 🚨 স্প্ল্যাশ স্ক্রিন ফিক্স (অরিজিনাল বডি ফোল্ডারে সেভ করা হচ্ছে)
+          if splash_b64 != 'null':
               try:
                   with open('xtrapp/www/splash.png', 'wb') as f:
-                      f.write(base64.b64decode(splash + '==='))
+                      f.write(base64.b64decode(splash_b64 + '==='))
                   full_splash_html = '''
                   <div id="xtr_full_splash" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:999999999; background: #FFFFFF url('splash.png') no-repeat center center; background-size: 100% 100%;"></div>
                   <script>
@@ -217,12 +216,13 @@ jobs:
           """
           config = config.replace('</widget>', timeout_fix + '\n</widget>')
 
-          if icon != 'null':
+          # 🚨 আইকন ফিক্স (ডাইরেক্ট বেস-৬৪ সেভ করা হচ্ছে)
+          if icon_b64 != 'null':
               try:
                   with open('xtrapp/res/icon.png', 'wb') as f:
-                      f.write(base64.b64decode(icon + '==='))
+                      f.write(base64.b64decode(icon_b64 + '==='))
                   config = config.replace('</widget>', '    <icon src="res/icon.png" />\n</widget>')
-              except: pass
+              except Exception as e: pass
 
           p_xml = '<platform name="android">\n'
           p_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@style/Theme.AppCompat.NoActionBar" android:usesCleartextTraffic="true" />\n  </edit-config>\n'
@@ -249,10 +249,13 @@ jobs:
           echo "org.gradle.jvmargs=-Xmx2048m" >> platforms/android/gradle.properties
           cordova build android --debug
 
-      - name: Release Final APK
+      # 🚨 ইউনিক রিলিজ তৈরি করার ম্যাজিক (ক্যাশ বাইপাস)
+      - name: Release Unique APK
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_NAME: ${{ github.event.client_payload.app_name }}
+          TIMESTAMP: ${{ github.event.client_payload.timestamp }}
         run: |
-          gh release delete latest --yes || true
-          git push --delete origin latest || true
-          gh release create latest xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "latest" -n "Latest Build"
+          SAFE_NAME=$(echo "$APP_NAME" | tr -d ' ' | tr -d '"' | tr -d "'")
+          mv xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk "xtrapp/platforms/android/app/build/outputs/apk/debug/${SAFE_NAME}_XtrStudio.apk"
+          gh release create "build_${TIMESTAMP}" "xtrapp/platforms/android/app/build/outputs/apk/debug/${SAFE_NAME}_XtrStudio.apk" -t "build_${TIMESTAMP}" -n "Build ${APP_NAME}"

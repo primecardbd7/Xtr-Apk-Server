@@ -42,7 +42,6 @@ jobs:
           cordova plugin add cordova-plugin-android-permissions
           cordova plugin add cordova-plugin-file
           cordova plugin add cordova-plugin-file-transfer
-          # 🚨 স্ট্যাটাস বার কালার করার প্লাগিন
           cordova plugin add cordova-plugin-statusbar
 
       - name: Process Code, Full-Screen Splash, Status Bar & Download Magic 🚨
@@ -78,11 +77,9 @@ jobs:
           mic_str = 'true' if use_mic else 'false'
           store_str = 'true' if use_storage else 'false'
 
-          # 🚨 ম্যাজিক স্ক্রিপ্ট: স্ট্যাটাস বার কালার এবং ফাইল ডাউনলোডার
           script = f"""
           <script>
           document.addEventListener('deviceready', function() {{
-              // ঘড়ির জায়গার কালার সেট করা হচ্ছে
               if(StatusBar) {{
                   StatusBar.backgroundColorByHexString('{status_color}');
                   StatusBar.styleLightContent();
@@ -102,11 +99,11 @@ jobs:
                   permissions.requestPermissions(list, function(){{}}, function(){{}});
               }}
               
+              // 🚨 ম্যাজিক ফিক্স: স্প্ল্যাশ স্ক্রিন জোর করে ৩ সেকেন্ড পর সরানো হবে
               setTimeout(function() {{
                  if(navigator.splashscreen) navigator.splashscreen.hide();
               }}, 3000);
 
-              // 🚨 যেকোনো ছবি/ভিডিও এক ক্লিকেই গ্যালারিতে সেভ করার লজিক
               document.addEventListener('click', function(e) {{
                   var target = e.target;
                   while (target && target.tagName !== 'A') target = target.parentNode;
@@ -167,6 +164,15 @@ jobs:
                   }});
               }}
           }}, false);
+          
+          // 🚨 ফলব্যাক: যদি deviceready ফায়ার না হয় (Firebase এর কারণে), তবুও স্প্ল্যাশ স্ক্রিন হাইড হবে!
+          window.onload = function() {{
+              setTimeout(function() {{
+                  if(navigator.splashscreen) navigator.splashscreen.hide();
+                  var el = document.getElementById('xtr_full_splash');
+                  if(el) el.style.display = 'none';
+              }}, 4000);
+          }};
           </script>
           """
           
@@ -203,7 +209,7 @@ jobs:
           with open('xtrapp/config.xml', 'r', encoding='utf-8') as f:
               config = f.read()
               
-          config = config.replace('<widget ', '<widget xmlns:android="http://schemas.android.com/apk/res/android" ')
+          config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
           timeout_fix = """
           <preference name="loadUrlTimeoutValue" value="700000" />
@@ -224,7 +230,7 @@ jobs:
           if use_cam:
               p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n  </config-file>\n'
           if use_mic:
-              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*\">\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n  </config-file>\n'
+              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n  </config-file>\n'
           if use_storage:
               p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n  </config-file>\n'
           p_xml += '</platform>'

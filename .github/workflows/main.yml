@@ -44,12 +44,13 @@ jobs:
           cordova plugin add cordova-plugin-file-transfer
           cordova plugin add cordova-plugin-statusbar
 
-      - name: Process Code, Images, Permissions & Fix White Screen 🚨
+      - name: Process Code, Images, Permissions & Status Bar
         env:
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
           USE_STORAGE: ${{ github.event.client_payload.use_storage }}
-          STATUS_BAR_COLOR: ${{ github.event.client_payload.status_bar_color }}
+          USE_DYNAMIC: ${{ github.event.client_payload.use_dynamic }}
+          STATUS_COLOR: ${{ github.event.client_payload.status_bar_color }}
         run: |
           cat << 'EOF' > process_app.py
           import os, json, base64, re
@@ -68,28 +69,27 @@ jobs:
           use_cam = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
           use_storage = str(os.environ.get('USE_STORAGE', 'false')).lower() == 'true'
-          status_color = os.environ.get('STATUS_BAR_COLOR', '#0D6EFD')
+          use_dynamic = str(os.environ.get('USE_DYNAMIC', 'false')).lower() == 'true'
+          status_color = os.environ.get('STATUS_COLOR', '#0D6EFD')
+
+          if 'cordova.js' not in html:
+              html = '<script src="cordova.js"></script>\n' + html
 
           cam_str = 'true' if use_cam else 'false'
           mic_str = 'true' if use_mic else 'false'
           store_str = 'true' if use_storage else 'false'
 
-          # 🚨 ম্যাজিক ১: White Screen (সাদা স্ক্রিন) ফিক্স!
-          # cordova.js সব সময় <head> বা <body> এর একদম শুরুতে লোড করতে হয়
-          if 'cordova.js' not in html:
-              if '<head>' in html.lower():
-                  html = re.sub(r'(<head[^>]*>)', r'\1\n<script src="cordova.js"></script>\n', html, count=1, flags=re.IGNORECASE)
-              elif '<body' in html.lower():
-                  html = re.sub(r'(<body[^>]*>)', r'\1\n<script src="cordova.js"></script>\n', html, count=1, flags=re.IGNORECASE)
-              else:
-                  html = '<script src="cordova.js"></script>\n' + html
+          # 🚨 ম্যাজিক: ডাইনামিক স্ট্যাটাস বার লজিক
+          if use_dynamic:
+              status_script = "StatusBar.overlaysWebView(true); StatusBar.styleDefault();"
+          else:
+              status_script = f"StatusBar.overlaysWebView(false); StatusBar.backgroundColorByHexString('{status_color}'); StatusBar.styleLightContent();"
 
           script = f"""
           <script>
           document.addEventListener('deviceready', function() {{
               if(StatusBar) {{
-                  StatusBar.backgroundColorByHexString('{status_color}');
-                  StatusBar.styleLightContent();
+                  {status_script}
               }}
 
               var permissions = cordova.plugins.permissions;
@@ -113,25 +113,15 @@ jobs:
               document.addEventListener('click', function(e) {{
                   var target = e.target;
                   while (target && target.tagName !== 'A') target = target.parentNode;
-                  
                   if (target && target.hasAttribute('download')) {{
                       e.preventDefault();
                       var url = target.href;
                       var filename = target.getAttribute('download') || 'downloaded_file';
-                      
-                      if (!{store_str}) {{
-                          alert("Please enable 'Download Photo/Video' permission to save files.");
-                          return;
-                      }}
-
+                      if (!{store_str}) {{ alert("Enable 'Download Photo/Video' permission."); return; }}
                       if (url.startsWith('http')) {{
                           var ft = new FileTransfer();
                           var store = cordova.file.externalRootDirectory + 'Download/' + filename;
-                          ft.download(url, store, function(entry) {{
-                              alert('File successfully saved to Downloads folder!');
-                          }}, function(err) {{
-                              alert('Error saving file!');
-                          }});
+                          ft.download(url, store, function(entry) {{ alert('Saved to Downloads!'); }}, function(err) {{ alert('Error saving file!'); }});
                       }} else if (url.startsWith('blob:')) {{
                           var xhr = new XMLHttpRequest();
                           xhr.open('GET', url, true);
@@ -140,8 +130,7 @@ jobs:
                               var reader = new FileReader();
                               reader.readAsDataURL(xhr.response);
                               reader.onloadend = function() {{
-                                  var base64data = reader.result.split(',')[1];
-                                  saveBase64ToGallery(base64data, filename, xhr.response.type);
+                                  saveBase64ToGallery(reader.result.split(',')[1], filename, xhr.response.type);
                               }}
                           }};
                           xhr.send();
@@ -154,8 +143,7 @@ jobs:
                   window.resolveLocalFileSystemURL(folder, function(dirEntry) {{
                       dirEntry.getFile(filename, {{create: true, exclusive: false}}, function(fileEntry) {{
                           fileEntry.createWriter(function(fileWriter) {{
-                              fileWriter.onwriteend = function() {{ alert('Successfully saved to Downloads folder!'); }};
-                              fileWriter.onerror = function() {{ alert('Failed to save file.'); }};
+                              fileWriter.onwriteend = function() {{ alert('Saved to Downloads!'); }};
                               var byteCharacters = atob(b64Data);
                               var byteArrays = [];
                               for (var offset = 0; offset < byteCharacters.length; offset += 512) {{
@@ -170,14 +158,6 @@ jobs:
                   }});
               }}
           }}, false);
-          
-          window.onload = function() {{
-              setTimeout(function() {{
-                  if(navigator.splashscreen) navigator.splashscreen.hide();
-                  var el = document.getElementById('xtr_full_splash');
-                  if(el) el.style.display = 'none';
-              }}, 4000);
-          }};
           </script>
           """
           
@@ -185,6 +165,9 @@ jobs:
               html = html.replace('</body>', script + '\n</body>')
           else:
               html += script
+              
+          with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
+              f.write(html)
 
           os.makedirs('xtrapp/res', exist_ok=True)
           os.makedirs('xtrapp/www', exist_ok=True)
@@ -216,11 +199,9 @@ jobs:
               
           config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
-          # 🚨 ম্যাজিক ২: অ্যাপকে বলে দেওয়া হলো যেন জীবনেও সাদা স্ক্রিনে আটকে না থাকে!
           timeout_fix = """
           <preference name="loadUrlTimeoutValue" value="700000" />
           <preference name="KeepRunning" value="true" />
-          <preference name="ErrorUrl" value="file:///android_asset/www/index.html" />
           """
           config = config.replace('</widget>', timeout_fix + '\n</widget>')
 
@@ -232,7 +213,11 @@ jobs:
               except: pass
 
           p_xml = '<platform name="android">\n'
-          p_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@style/Theme.AppCompat.NoActionBar" android:usesCleartextTraffic="true" />\n  </edit-config>\n'
+          # 🚨 ডাইনামিক ফুল স্ক্রিনের জন্য থিম
+          if use_dynamic:
+              p_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@style/Theme.AppCompat.Light.NoActionBar" android:usesCleartextTraffic="true" />\n  </edit-config>\n'
+          else:
+              p_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@style/Theme.AppCompat.NoActionBar" android:usesCleartextTraffic="true" />\n  </edit-config>\n'
           
           if use_cam:
               p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n  </config-file>\n'
@@ -262,6 +247,6 @@ jobs:
           APP_NAME: ${{ github.event.client_payload.app_name }}
         run: |
           SAFE_NAME=$(echo "$APP_NAME" | tr -d ' ' | tr -d '"' | tr -d "'")
-          gh api -X DELETE /repos/${{ github.repository }}/git/refs/tags/$SAFE_NAME || true
-          gh release delete $SAFE_NAME -y -R ${{ github.repository }} || true
-          gh release create $SAFE_NAME xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "$SAFE_NAME" -n "Build for $APP_NAME" -R ${{ github.repository }}
+          gh release delete $SAFE_NAME --yes || true
+          git push --delete origin $SAFE_NAME || true
+          gh release create $SAFE_NAME xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "$SAFE_NAME" -n "Latest Build"

@@ -44,12 +44,13 @@ jobs:
           cordova plugin add cordova-plugin-file-transfer
           cordova plugin add cordova-plugin-statusbar
 
-      - name: Process Code, Images, Permissions & Status Bar
+      - name: Process Code, Permissions & Apply Security 🚨
         env:
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
           USE_STORAGE: ${{ github.event.client_payload.use_storage }}
           USE_DYNAMIC: ${{ github.event.client_payload.use_dynamic }}
+          USE_SECURITY: ${{ github.event.client_payload.use_security }}
           STATUS_COLOR: ${{ github.event.client_payload.status_bar_color }}
         run: |
           cat << 'EOF' > process_app.py
@@ -70,6 +71,7 @@ jobs:
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
           use_storage = str(os.environ.get('USE_STORAGE', 'false')).lower() == 'true'
           use_dynamic = str(os.environ.get('USE_DYNAMIC', 'false')).lower() == 'true'
+          use_security = str(os.environ.get('USE_SECURITY', 'false')).lower() == 'true'
           status_color = os.environ.get('STATUS_COLOR', '#0D6EFD')
 
           if 'cordova.js' not in html:
@@ -79,7 +81,6 @@ jobs:
           mic_str = 'true' if use_mic else 'false'
           store_str = 'true' if use_storage else 'false'
 
-          # 🚨 ম্যাজিক: ডাইনামিক স্ট্যাটাস বার লজিক
           if use_dynamic:
               status_script = "StatusBar.overlaysWebView(true); StatusBar.styleDefault();"
           else:
@@ -88,10 +89,7 @@ jobs:
           script = f"""
           <script>
           document.addEventListener('deviceready', function() {{
-              if(StatusBar) {{
-                  {status_script}
-              }}
-
+              if(StatusBar) {{ {status_script} }}
               var permissions = cordova.plugins.permissions;
               var list = [];
               if ({cam_str}) list.push(permissions.CAMERA);
@@ -102,61 +100,8 @@ jobs:
                   list.push(permissions.WRITE_EXTERNAL_STORAGE);
                   list.push(permissions.READ_EXTERNAL_STORAGE);
               }}
-              if (list.length > 0) {{
-                  permissions.requestPermissions(list, function(){{}}, function(){{}});
-              }}
-              
-              setTimeout(function() {{
-                 if(navigator.splashscreen) navigator.splashscreen.hide();
-              }}, 3000);
-
-              document.addEventListener('click', function(e) {{
-                  var target = e.target;
-                  while (target && target.tagName !== 'A') target = target.parentNode;
-                  if (target && target.hasAttribute('download')) {{
-                      e.preventDefault();
-                      var url = target.href;
-                      var filename = target.getAttribute('download') || 'downloaded_file';
-                      if (!{store_str}) {{ alert("Enable 'Download Photo/Video' permission."); return; }}
-                      if (url.startsWith('http')) {{
-                          var ft = new FileTransfer();
-                          var store = cordova.file.externalRootDirectory + 'Download/' + filename;
-                          ft.download(url, store, function(entry) {{ alert('Saved to Downloads!'); }}, function(err) {{ alert('Error saving file!'); }});
-                      }} else if (url.startsWith('blob:')) {{
-                          var xhr = new XMLHttpRequest();
-                          xhr.open('GET', url, true);
-                          xhr.responseType = 'blob';
-                          xhr.onload = function() {{
-                              var reader = new FileReader();
-                              reader.readAsDataURL(xhr.response);
-                              reader.onloadend = function() {{
-                                  saveBase64ToGallery(reader.result.split(',')[1], filename, xhr.response.type);
-                              }}
-                          }};
-                          xhr.send();
-                      }}
-                  }}
-              }});
-
-              function saveBase64ToGallery(b64Data, filename, contentType) {{
-                  var folder = cordova.file.externalRootDirectory + 'Download/';
-                  window.resolveLocalFileSystemURL(folder, function(dirEntry) {{
-                      dirEntry.getFile(filename, {{create: true, exclusive: false}}, function(fileEntry) {{
-                          fileEntry.createWriter(function(fileWriter) {{
-                              fileWriter.onwriteend = function() {{ alert('Saved to Downloads!'); }};
-                              var byteCharacters = atob(b64Data);
-                              var byteArrays = [];
-                              for (var offset = 0; offset < byteCharacters.length; offset += 512) {{
-                                  var slice = byteCharacters.slice(offset, offset + 512);
-                                  var byteNumbers = new Array(slice.length);
-                                  for (var i = 0; i < slice.length; i++) byteNumbers[i] = slice.charCodeAt(i);
-                                  byteArrays.push(new Uint8Array(byteNumbers));
-                              }}
-                              fileWriter.write(new Blob(byteArrays, {{type: contentType}}));
-                          }});
-                      }});
-                  }});
-              }}
+              if (list.length > 0) permissions.requestPermissions(list, function(){{}}, function(){{}});
+              setTimeout(function() {{ if(navigator.splashscreen) navigator.splashscreen.hide(); }}, 3000);
           }}, false);
           </script>
           """
@@ -165,31 +110,16 @@ jobs:
               html = html.replace('</body>', script + '\n</body>')
           else:
               html += script
-              
-          with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
-              f.write(html)
+
+          # 🚨 ম্যাজিক: Xtr App Security (কোড এনক্রিপ্ট করা হচ্ছে)
+          if use_security:
+              encoded_html = base64.b64encode(html.encode('utf-8')).decode('utf-8')
+              html = f"""<!DOCTYPE html><html><head><script>
+              document.write(decodeURIComponent(escape(atob('{encoded_html}'))));
+              </script></head><body></body></html>"""
 
           os.makedirs('xtrapp/res', exist_ok=True)
           os.makedirs('xtrapp/www', exist_ok=True)
-
-          if splash != 'null':
-              try:
-                  with open('xtrapp/www/splash.png', 'wb') as f:
-                      f.write(base64.b64decode(splash + '==='))
-                  full_splash_html = '''
-                  <div id="xtr_full_splash" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:999999999; background: #FFFFFF url('splash.png') no-repeat center center; background-size: 100% 100%;"></div>
-                  <script>
-                  setTimeout(function() {
-                      var el = document.getElementById('xtr_full_splash');
-                      if(el) el.style.display = 'none';
-                  }, 3000);
-                  </script>
-                  '''
-                  if '<body' in html.lower():
-                      html = re.sub(r'(<body[^>]*>)', r'\1' + full_splash_html, html, count=1, flags=re.IGNORECASE)
-                  else:
-                      html = full_splash_html + html
-              except Exception as e: pass
 
           with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
               f.write(html)
@@ -213,7 +143,6 @@ jobs:
               except: pass
 
           p_xml = '<platform name="android">\n'
-          # 🚨 ডাইনামিক ফুল স্ক্রিনের জন্য থিম
           if use_dynamic:
               p_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@style/Theme.AppCompat.Light.NoActionBar" android:usesCleartextTraffic="true" />\n  </edit-config>\n'
           else:

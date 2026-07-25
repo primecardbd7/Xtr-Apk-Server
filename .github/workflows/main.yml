@@ -40,8 +40,11 @@ jobs:
           cd xtrapp
           cordova platform add android@13.0.0
           cordova plugin add cordova-plugin-android-permissions
+          cordova plugin add cordova-plugin-file
+          cordova plugin add cordova-plugin-file-transfer
+          cordova plugin add cordova-plugin-statusbar
 
-      - name: Process Code, Images & Permissions (🚨 White Screen Fix)
+      - name: Process Data, Images & Fix Dynamic Color 🚨
         env:
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
@@ -51,14 +54,19 @@ jobs:
           STATUS_COLOR: ${{ github.event.client_payload.status_bar_color }}
         run: |
           cat << 'EOF' > process_app.py
-          import os, base64
+          import os, json, base64, re
 
-          # 🚨 ম্যাজিক ১: আপলোড করা ফাইলগুলো থেকে ডেটা রিড করা হচ্ছে
+          # 🚨 ম্যাজিক ১: JSON থেকে কোড এবং ছবি পড়া হচ্ছে (কোনো ফাইল হারাবে না)
           try:
-              with open('user_code.html', 'r', encoding='utf-8') as f:
-                  html_data = f.read()
+              with open('user_data.json', 'r', encoding='utf-8') as f:
+                  data = json.load(f)
+              html_data = data.get('code', '<h1>Error loading code!</h1>')
+              icon_b64 = data.get('icon', 'null').replace('\n', '').strip()
+              splash_b64 = data.get('splash', 'null').replace('\n', '').strip()
           except Exception:
-              html_data = '<h1>Error reading HTML code!</h1>'
+              html_data = '<h1>JSON Data Error!</h1>'
+              icon_b64 = 'null'
+              splash_b64 = 'null'
 
           use_cam = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
@@ -74,8 +82,10 @@ jobs:
           mic_str = 'true' if use_mic else 'false'
           store_str = 'true' if use_storage else 'false'
 
+          # 🚨 ম্যাজিক ২: ডাইনামিক স্ট্যাটাস বার ফিক্স (কালো হবে না)
           if use_dynamic:
-              status_script = "StatusBar.overlaysWebView(true); StatusBar.styleDefault();"
+              # স্ট্যাটাস বার ট্রান্সপারেন্ট করার পারফেক্ট কোড
+              status_script = "StatusBar.overlaysWebView(true); StatusBar.backgroundColorByHexString('#00000000'); StatusBar.styleDefault();"
           else:
               status_script = f"StatusBar.overlaysWebView(false); StatusBar.backgroundColorByHexString('{status_color}'); StatusBar.styleLightContent();"
 
@@ -104,6 +114,7 @@ jobs:
           else:
               html_data += permission_script
 
+          # সিকিউরিটি
           if use_security:
               encoded_html = base64.b64encode(html_data.encode('utf-8')).decode('utf-8')
               html_data = f"<!DOCTYPE html><html><head><script>document.write(decodeURIComponent(escape(atob('{encoded_html}'))));</script></head><body></body></html>"
@@ -112,24 +123,20 @@ jobs:
           with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
               f.write(html_data)
 
-          # 🚨 ম্যাজিক ২: ছবি ফাইলগুলো রিড করে সেট করা হচ্ছে
+          # 🚨 ম্যাজিক ৩: ছবিগুলো ডিকোড করে সেভ করা হচ্ছে
           os.makedirs('xtrapp/res', exist_ok=True)
           config = open('xtrapp/config.xml', 'r', encoding='utf-8').read()
           config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
-          try:
-              if os.path.exists('user_icon.png'):
-                  with open('user_icon.png', 'r') as f:
-                      icon_b64 = f.read().strip()
+          if icon_b64 != 'null':
+              try:
                   with open('xtrapp/res/icon.png', 'wb') as f:
                       f.write(base64.b64decode(icon_b64 + '==='))
                   config = config.replace('</widget>', '    <icon src=\"res/icon.png\" />\n</widget>')
-          except Exception as e: print("Icon Error:", e)
+              except Exception as e: print("Icon Error:", e)
 
-          try:
-              if os.path.exists('user_splash.png'):
-                  with open('user_splash.png', 'r') as f:
-                      splash_b64 = f.read().strip()
+          if splash_b64 != 'null':
+              try:
                   with open('xtrapp/res/splash.png', 'wb') as f:
                       f.write(base64.b64decode(splash_b64 + '==='))
                   splash_xml = '''
@@ -139,7 +146,7 @@ jobs:
                   <preference name=\"ShowSplashScreenSpinner\" value=\"false\" />
                   '''
                   config = config.replace('</widget>', splash_xml + '\n</widget>')
-          except Exception as e: print("Splash Error:", e)
+              except Exception as e: print("Splash Error:", e)
 
           timeout_fix = """
           <preference name="loadUrlTimeoutValue" value="700000" />
@@ -148,6 +155,7 @@ jobs:
           """
           config = config.replace('</widget>', timeout_fix + '\n</widget>')
 
+          # 🚨 ম্যাজিক ৪: ডাইনামিক স্ট্যাটাস বারের জন্য Light থিম (যাতে কালো না দেখায়)
           p_xml = '<platform name="android">\n'
           if use_dynamic:
               p_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@style/Theme.AppCompat.Light.NoActionBar" android:usesCleartextTraffic="true" />\n  </edit-config>\n'

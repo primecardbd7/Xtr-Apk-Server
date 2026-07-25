@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Translator UI</title>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        /* ============================
+           1. Modern CSS Reset & Variables
+           ============================ */
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --glass-bg: rgba(255, 255, 255, 0.95);
+            --input-bg: #f8f9fa;
+            --border-color: #e2e8f0;
+            --text-main: #1e293b;
+            --text-light: #64748b;
+            --accent: #6366f1;
+            --radius: 16px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--primary-gradient);
+            padding: 20px;
+        }
+
+        /* ============================
+           2. Main Card Design
+           ============================ */
+        .container {
+            background: var(--glass-bg);
+            width: 100%;
+            max-width: 900px;
+            border-radius: 24px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+            padding: 30px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        header h2 {
+            font-size: 1.8rem;
+            color: var(--text-main);
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        /* ============================
+           3. Improved Language Controls
+           ============================ */
+        .translation-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #fff;
+            padding: 8px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            border: 1px solid var(--border-color);
+        }
+
+        /* Custom Select Wrapper */
+        .select-container {
+            position: relative;
+            flex: 1;
+            width: 100%;
+        }
+
+        .select-container select {
+            width: 100%;
+            appearance: none; /* Hide default arrow */
+            -webkit-appearance: none;
+            background: transparent;
+            padding: 12px 40px 12px 15px;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-main);
+            cursor: pointer;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .select-container select:hover {
+            background-color: #f1f5f9;
+        }
+
+        .select-container select:focus {
+            border-color: var(--accent);
+            background-color: #eef2ff;
+        }
+
+        /* Custom Arrow Icon */
+        .select-container i {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-light);
+            pointer-events: none;
+            font-size: 0.8rem;
+            transition: transform 0.3s;
+        }
+
+        .select-container select:focus + i {
+            transform: translateY(-50%) rotate(180deg);
+            color: var(--accent);
+        }
+
+        /* Swap Button Design */
+        .swap-btn {
+            width: 45px;
+            height: 45px;
+            min-width: 45px;
+            border-radius: 50%;
+            background: #f1f5f9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: var(--text-light);
+            margin: 0 15px;
+            transition: all 0.3s ease;
+            border: 1px solid transparent;
+        }
+
+        .swap-btn:hover {
+            background: var(--accent);
+            color: white;
+            transform: rotate(180deg) scale(1.1);
+            box-shadow: 0 5px 15px rgba(99, 102, 241, 0.3);
+        }
+
+        /* ============================
+           4. Input & Output Boxes
+           ============================ */
+        .text-areas {
+            display: flex;
+            gap: 20px;
+        }
+
+        .box {
+            flex: 1;
+            position: relative;
+            background: var(--input-bg);
+            border-radius: var(--radius);
+            border: 1px solid var(--border-color);
+            padding: 20px;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .box:focus-within {
+            border-color: var(--accent);
+            background: white;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        }
+
+        textarea {
+            width: 100%;
+            height: 250px;
+            border: none;
+            outline: none;
+            background: transparent;
+            font-size: 1.1rem;
+            line-height: 1.6;
+            color: var(--text-main);
+            resize: none;
+        }
+
+        textarea::placeholder {
+            color: #cbd5e1;
+        }
+
+        /* Copy Button */
+        .copy-btn {
+            position: absolute;
+            bottom: 15px;
+            right: 15px;
+            background: white;
+            border: 1px solid var(--border-color);
+            width: 35px;
+            height: 35px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-light);
+            cursor: pointer;
+            transition: all 0.2s;
+            z-index: 10; /* Ensure it's clickable */
+        }
+
+        .copy-btn:hover {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        .copy-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* ============================
+           5. Translate Button
+           ============================ */
+        .action-area {
+            margin-top: 25px;
+            text-align: center;
+        }
+
+        button.translate-btn {
+            background: var(--primary-gradient);
+            color: white;
+            font-size: 1.1rem;
+            padding: 16px 45px;
+            border: none;
+            border-radius: 50px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 10px 20px rgba(118, 75, 162, 0.3);
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        button.translate-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(118, 75, 162, 0.4);
+        }
+
+        button.translate-btn:active {
+            transform: scale(0.98);
+        }
+
+        /* Spinner */
+        .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ============================
+           6. Toast Notification
+           ============================ */
+        #toast {
+            visibility: hidden;
+            min-width: 250px;
+            background-color: #1e293b;
+            color: #fff;
+            text-align: center;
+            border-radius: 50px;
+            padding: 14px 25px;
+            position: fixed;
+            z-index: 100;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.95rem;
+            font-weight: 500;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+            opacity: 0;
+            transition: opacity 0.3s, bottom 0.3s;
+        }
+
+        #toast.show {
+            visibility: visible;
+            opacity: 1;
+            bottom: 50px;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .text-areas {
+                flex-direction: column;
+            }
+            textarea {
+                height: 150px;
+            }
+            .controls {
+                flex-direction: row; 
+                padding: 10px;
+            }
+            .swap-btn {
+                width: 35px;
+                height: 35px;
+                min-width: 35px;
+                margin: 0 8px;
+            }
+            .select-container select {
+                padding: 10px 30px 10px 10px;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h2>Modern Translator</h2>
+        </header>
+
+        <div class="translation-wrapper">
+            <!-- Language Controls -->
+            <div class="controls">
+                <div class="select-container">
+                    <select id="select-from"></select>
+                    <i class="fa-solid fa-chevron-down"></i>
+                </div>
+                
+                <div class="swap-btn" title="Swap Languages">
+                    <i class="fa-solid fa-arrow-right-arrow-left"></i>
+                </div>
+                
+                <div class="select-container">
+                    <select id="select-to"></select>
+                    <i class="fa-solid fa-chevron-down"></i>
+                </div>
+            </div>
+
+            <!-- Text Areas -->
+            <div class="text-areas">
+                <!-- Input Box -->
+                <div class="box">
+                    <textarea id="input-text" placeholder="Type or paste text here..."></textarea>
+                    <div class="copy-btn" id="copy-from" title="Copy Text">
+                        <i class="fa-regular fa-copy"></i>
+                    </div>
+                </div>
+
+                <!-- Output Box -->
+                <div class="box">
+                    <textarea id="output-text" placeholder="Translation will appear here..." readonly></textarea>
+                    <div class="copy-btn" id="copy-to" title="Copy Translation">
+                        <i class="fa-regular fa-copy"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-area">
+            <button id="translate-btn" class="translate-btn">
+                <span>Translate Now</span>
+                <div class="spinner"></div>
+            </button>
+        </div>
+    </div>
+
+    <!-- Toast Notification Element -->
+    <div id="toast">Text copied to clipboard!</div>
+
+    <script>
+        // --- Configuration ---
+        const languages = {
+            "en-GB": "English",
+            "bn-IN": "Bangla",
+            "hi-IN": "Hindi",
+            "ar-SA": "Arabic",
+            "fr-FR": "French",
+            "es-ES": "Spanish",
+            "de-DE": "German",
+            "zh-CN": "Chinese",
+            "ja-JP": "Japanese",
+            "pt-PT": "Portuguese",
+            "ru-RU": "Russian"
+        };
+
+        // --- Select Elements ---
+        const selectFrom = document.getElementById("select-from");
+        const selectTo = document.getElementById("select-to");
+        const inputText = document.getElementById("input-text");
+        const outputText = document.getElementById("output-text");
+        const translateBtn = document.getElementById("translate-btn");
+        const swapBtn = document.querySelector(".swap-btn");
+        const copyBtns = document.querySelectorAll(".copy-btn");
+        const spinner = document.querySelector(".spinner");
+        const btnText = translateBtn.querySelector("span");
+        const toast = document.getElementById("toast");
+
+        // --- 1. Populate Dropdowns ---
+        function populateLanguages() {
+            for (let code in languages) {
+                let selectedFrom = code === "en-GB" ? "selected" : "";
+                selectFrom.insertAdjacentHTML("beforeend", `<option value="${code}" ${selectedFrom}>${languages[code]}</option>`);
+
+                let selectedTo = code === "bn-IN" ? "selected" : "";
+                selectTo.insertAdjacentHTML("beforeend", `<option value="${code}" ${selectedTo}>${languages[code]}</option>`);
+            }
+        }
+        populateLanguages();
+
+        // --- 2. Translation Logic ---
+        async function translateText() {
+            let text = inputText.value.trim();
+            
+            if (!text) {
+                showToast("Please enter some text first!", true);
+                return;
+            }
+
+            translateBtn.disabled = true;
+            btnText.innerText = "Translating...";
+            spinner.style.display = "block";
+            outputText.setAttribute("placeholder", "Translating...");
+
+            let fromLang = selectFrom.value.split('-')[0];
+            let toLang = selectTo.value.split('-')[0];
+            const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${fromLang}|${toLang}`;
+
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                
+                if (data.responseData.translatedText) {
+                    outputText.value = data.responseData.translatedText;
+                } else {
+                    outputText.value = "Translation failed.";
+                }
+            } catch (err) {
+                console.error(err);
+                showToast("Network Error. Check internet connection.", true);
+            } finally {
+                translateBtn.disabled = false;
+                btnText.innerText = "Translate Now";
+                spinner.style.display = "none";
+            }
+        }
+
+        // --- 3. IMPROVED COPY FUNCTION (Fixes Issue) ---
+        function copyToClipboard(text) {
+            if (!text) {
+                showToast("Nothing to copy!", true);
+                return;
+            }
+            
+            // Method 1: Try Modern API first
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text)
+                    .then(() => showToast("Copied to clipboard!"))
+                    .catch(err => {
+                        console.error("Async copy failed, trying fallback", err);
+                        fallbackCopy(text);
+                    });
+            } else {
+                // Method 2: Fallback for older browsers or non-HTTPS
+                fallbackCopy(text);
+            }
+        }
+
+        // Fallback Copy Function
+        function fallbackCopy(text) {
+            try {
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                
+                // Make it invisible but part of DOM
+                textArea.style.position = "fixed";
+                textArea.style.left = "-9999px";
+                textArea.style.top = "0";
+                
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+
+                const successful = document.execCommand('copy');
+                document.body.removeChild(textArea);
+
+                if (successful) {
+                    showToast("Copied to clipboard!");
+                } else {
+                    showToast("Failed to copy.", true);
+                }
+            } catch (err) {
+                console.error("Fallback copy error", err);
+                showToast("Failed to copy.", true);
+            }
+        }
+
+        // --- 4. Event Listeners ---
+        translateBtn.addEventListener("click", translateText);
+
+        swapBtn.addEventListener("click", () => {
+            const tempText = inputText.value;
+            inputText.value = outputText.value;
+            outputText.value = tempText;
+
+            const tempLang = selectFrom.value;
+            selectFrom.value = selectTo.value;
+            selectTo.value = tempLang;
+        });
+
+        copyBtns.forEach(btn => {
+            btn.addEventListener("click", () => {
+                if (btn.id === "copy-from") {
+                    copyToClipboard(inputText.value);
+                } else {
+                    copyToClipboard(outputText.value);
+                }
+            });
+        });
+
+        function showToast(message, isError = false) {
+            toast.innerText = message;
+            toast.style.backgroundColor = isError ? "#ff416c" : "#1e293b";
+            toast.className = "show";
+            setTimeout(() => { 
+                toast.className = toast.className.replace("show", ""); 
+            }, 3000);
+        }
+
+        inputText.addEventListener("keyup", (e) => {
+            if(e.ctrlKey && e.key === "Enter") translateText();
+        });
+
+    </script>
+</body>
+</html>

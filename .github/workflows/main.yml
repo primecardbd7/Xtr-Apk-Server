@@ -44,8 +44,11 @@ jobs:
           cordova plugin add cordova-plugin-file-transfer
           cordova plugin add cordova-plugin-statusbar
 
-      - name: Process Code, Permissions & Apply Security 🚨
+      - name: Download URL Data & Apply Security 🚨
         env:
+          CODE_URL: ${{ github.event.client_payload.code_url }}
+          ICON_URL: ${{ github.event.client_payload.icon_url }}
+          SPLASH_URL: ${{ github.event.client_payload.splash_url }}
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
           USE_STORAGE: ${{ github.event.client_payload.use_storage }}
@@ -54,18 +57,18 @@ jobs:
           STATUS_COLOR: ${{ github.event.client_payload.status_bar_color }}
         run: |
           cat << 'EOF' > process_app.py
-          import os, json, base64, re
+          import os, urllib.request, base64
 
+          # 🚨 ক্লাউড থেকে কোড ডাউনলোড করা হচ্ছে
+          code_url = os.environ.get('CODE_URL', '').strip()
           try:
-              with open('user_data.json', 'r', encoding='utf-8') as f:
-                  data = json.load(f)
-              html = data.get('code', '<h1>Error loading code!</h1>')
-              icon = data.get('icon', 'null')
-              splash = data.get('splash', 'null')
+              if code_url and code_url != 'null':
+                  response = urllib.request.urlopen(code_url)
+                  html = response.read().decode('utf-8')
+              else:
+                  html = '<h1>Error: No code found!</h1>'
           except:
-              html = '<h1>JSON Data Error!</h1>'
-              icon = 'null'
-              splash = 'null'
+              html = '<h1>Error downloading code!</h1>'
 
           use_cam = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
@@ -111,12 +114,10 @@ jobs:
           else:
               html += script
 
-          # 🚨 ম্যাজিক: Xtr App Security (কোড এনক্রিপ্ট করা হচ্ছে)
+          # 🚨 Xtr App Security
           if use_security:
               encoded_html = base64.b64encode(html.encode('utf-8')).decode('utf-8')
-              html = f"""<!DOCTYPE html><html><head><script>
-              document.write(decodeURIComponent(escape(atob('{encoded_html}'))));
-              </script></head><body></body></html>"""
+              html = f"<!DOCTYPE html><html><head><script>document.write(decodeURIComponent(escape(atob('{encoded_html}'))));</script></head><body></body></html>"
 
           os.makedirs('xtrapp/res', exist_ok=True)
           os.makedirs('xtrapp/www', exist_ok=True)
@@ -129,17 +130,26 @@ jobs:
               
           config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
-          timeout_fix = """
-          <preference name="loadUrlTimeoutValue" value="700000" />
-          <preference name="KeepRunning" value="true" />
-          """
-          config = config.replace('</widget>', timeout_fix + '\n</widget>')
+          # 🚨 ক্লাউড থেকে ছবি ডাউনলোড করা হচ্ছে
+          icon_url = os.environ.get('ICON_URL', '').strip()
+          splash_url = os.environ.get('SPLASH_URL', '').strip()
 
-          if icon != 'null':
+          if icon_url and icon_url != 'null':
               try:
-                  with open('xtrapp/res/icon.png', 'wb') as f:
-                      f.write(base64.b64decode(icon + '==='))
+                  urllib.request.urlretrieve(icon_url, 'xtrapp/res/icon.png')
                   config = config.replace('</widget>', '    <icon src="res/icon.png" />\n</widget>')
+              except: pass
+
+          if splash_url and splash_url != 'null':
+              try:
+                  urllib.request.urlretrieve(splash_url, 'xtrapp/res/splash.png')
+                  s_xml = """
+                  <preference name="AndroidWindowSplashScreenAnimatedIcon" value="res/splash.png" />
+                  <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
+                  <preference name="SplashScreenDelay" value="3000" />
+                  <preference name="ShowSplashScreenSpinner" value="false" />
+                  """
+                  config = config.replace('</widget>', s_xml + '\n</widget>')
               except: pass
 
           p_xml = '<platform name="android">\n'

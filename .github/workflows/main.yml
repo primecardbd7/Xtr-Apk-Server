@@ -44,9 +44,9 @@ jobs:
           cordova plugin add cordova-plugin-file-transfer
           cordova plugin add cordova-plugin-statusbar
 
-      - name: Download URL Data & Apply Security 🚨
+      - name: Process Code, Images & Permissions 🚨
         env:
-          CODE_URL: ${{ github.event.client_payload.code_url }}
+          CODE_B64: ${{ github.event.client_payload.code_b64 }}
           ICON_URL: ${{ github.event.client_payload.icon_url }}
           SPLASH_URL: ${{ github.event.client_payload.splash_url }}
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
@@ -59,16 +59,12 @@ jobs:
           cat << 'EOF' > process_app.py
           import os, urllib.request, base64
 
-          # 🚨 ক্লাউড থেকে কোড ডাউনলোড করা হচ্ছে
-          code_url = os.environ.get('CODE_URL', '').strip()
+          # 🚨 ম্যাজিক: Base64 থেকে কোড ডিকোড করা হচ্ছে (কোনো ফাইল আপলোড লাগবে না!)
           try:
-              if code_url and code_url != 'null':
-                  response = urllib.request.urlopen(code_url)
-                  html = response.read().decode('utf-8')
-              else:
-                  html = '<h1>Error: No code found!</h1>'
+              b64_code = os.environ.get('CODE_B64', '')
+              html = base64.b64decode(b64_code).decode('utf-8')
           except:
-              html = '<h1>Error downloading code!</h1>'
+              html = '<h1>Error loading code!</h1>'
 
           use_cam = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
@@ -130,7 +126,12 @@ jobs:
               
           config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
-          # 🚨 ক্লাউড থেকে ছবি ডাউনলোড করা হচ্ছে
+          timeout_fix = """
+          <preference name="loadUrlTimeoutValue" value="700000" />
+          <preference name="KeepRunning" value="true" />
+          """
+          config = config.replace('</widget>', timeout_fix + '\n</widget>')
+
           icon_url = os.environ.get('ICON_URL', '').strip()
           splash_url = os.environ.get('SPLASH_URL', '').strip()
 

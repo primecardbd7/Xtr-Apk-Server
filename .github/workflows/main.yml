@@ -40,13 +40,9 @@ jobs:
           cd xtrapp
           cordova platform add android@13.0.0
           cordova plugin add cordova-plugin-android-permissions
-          cordova plugin add cordova-plugin-file
-          cordova plugin add cordova-plugin-file-transfer
-          cordova plugin add cordova-plugin-statusbar
 
-      - name: Process Code & Setup Permissions 🚨
+      - name: Process Code, Images & Permissions (🚨 White Screen Fix)
         env:
-          CODE_B64: ${{ github.event.client_payload.code_b64 }}
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
           USE_STORAGE: ${{ github.event.client_payload.use_storage }}
@@ -57,12 +53,12 @@ jobs:
           cat << 'EOF' > process_app.py
           import os, base64
 
-          # 🚨 ম্যাজিক: Base64 কোড ডিকোড করে সরাসরি ফাইলে লেখা হচ্ছে (কোনো ফাইল খোঁজার ঝামেলা নেই!)
+          # 🚨 ম্যাজিক ১: আপলোড করা ফাইলগুলো থেকে ডেটা রিড করা হচ্ছে
           try:
-              b64_code = os.environ.get('CODE_B64', '')
-              html = base64.b64decode(b64_code).decode('utf-8')
+              with open('user_code.html', 'r', encoding='utf-8') as f:
+                  html_data = f.read()
           except Exception:
-              html = '<h1>Error Decoding Code!</h1>'
+              html_data = '<h1>Error reading HTML code!</h1>'
 
           use_cam = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
           use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
@@ -71,8 +67,8 @@ jobs:
           use_security = str(os.environ.get('USE_SECURITY', 'false')).lower() == 'true'
           status_color = os.environ.get('STATUS_COLOR', '#0D6EFD')
 
-          if 'cordova.js' not in html:
-              html = '<script src="cordova.js"></script>\n' + html
+          if 'cordova.js' not in html_data:
+              html_data = '<script src=\"cordova.js\"></script>\n' + html_data
 
           cam_str = 'true' if use_cam else 'false'
           mic_str = 'true' if use_mic else 'false'
@@ -83,7 +79,7 @@ jobs:
           else:
               status_script = f"StatusBar.overlaysWebView(false); StatusBar.backgroundColorByHexString('{status_color}'); StatusBar.styleLightContent();"
 
-          script = f"""
+          permission_script = f"""
           <script>
           document.addEventListener('deviceready', function() {{
               if(StatusBar) {{ {status_script} }}
@@ -103,68 +99,52 @@ jobs:
           </script>
           """
           
-          if '</body>' in html:
-              html = html.replace('</body>', script + '\n</body>')
+          if '</body>' in html_data:
+              html_data = html_data.replace('</body>', permission_script + '\n</body>')
           else:
-              html += script
+              html_data += permission_script
 
-          # Security Obfuscation
           if use_security:
-              encoded_html = base64.b64encode(html.encode('utf-8')).decode('utf-8')
-              html = f"<!DOCTYPE html><html><head><script>document.write(decodeURIComponent(escape(atob('{encoded_html}'))));</script></head><body></body></html>"
+              encoded_html = base64.b64encode(html_data.encode('utf-8')).decode('utf-8')
+              html_data = f"<!DOCTYPE html><html><head><script>document.write(decodeURIComponent(escape(atob('{encoded_html}'))));</script></head><body></body></html>"
 
-          os.makedirs('xtrapp/res', exist_ok=True)
           os.makedirs('xtrapp/www', exist_ok=True)
-
           with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
-              f.write(html)
-          EOF
-          
-          python3 process_app.py
+              f.write(html_data)
 
-      - name: Download Images & Configure XML
-        env:
-          ICON_URL: ${{ github.event.client_payload.icon_url }}
-          SPLASH_URL: ${{ github.event.client_payload.splash_url }}
-          USE_CAMERA: ${{ github.event.client_payload.use_camera }}
-          USE_MIC: ${{ github.event.client_payload.use_mic }}
-          USE_STORAGE: ${{ github.event.client_payload.use_storage }}
-          USE_DYNAMIC: ${{ github.event.client_payload.use_dynamic }}
-        run: |
-          cat << 'EOF' > process_xml.py
-          import os, urllib.request, base64
-          
-          icon_url = os.environ.get('ICON_URL', '').strip()
-          splash_url = os.environ.get('SPLASH_URL', '').strip()
-          use_camera = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
-          use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
-          use_storage = str(os.environ.get('USE_STORAGE', 'false')).lower() == 'true'
-          use_dynamic = str(os.environ.get('USE_DYNAMIC', 'false')).lower() == 'true'
-
+          # 🚨 ম্যাজিক ২: ছবি ফাইলগুলো রিড করে সেট করা হচ্ছে
+          os.makedirs('xtrapp/res', exist_ok=True)
           config = open('xtrapp/config.xml', 'r', encoding='utf-8').read()
           config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
           try:
-              if icon_url and icon_url != 'null':
-                  urllib.request.urlretrieve(icon_url, 'xtrapp/res/icon.png')
-                  config = config.replace('</widget>', '    <icon src="res/icon.png" />\n</widget>')
-          except: pass
+              if os.path.exists('user_icon.png'):
+                  with open('user_icon.png', 'r') as f:
+                      icon_b64 = f.read().strip()
+                  with open('xtrapp/res/icon.png', 'wb') as f:
+                      f.write(base64.b64decode(icon_b64 + '==='))
+                  config = config.replace('</widget>', '    <icon src=\"res/icon.png\" />\n</widget>')
+          except Exception as e: print("Icon Error:", e)
 
           try:
-              if splash_url and splash_url != 'null':
-                  urllib.request.urlretrieve(splash_url, 'xtrapp/res/splash.png')
-                  s_xml = """
-                  <preference name="AndroidWindowSplashScreenAnimatedIcon" value="res/splash.png" />
-                  <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
-                  <preference name="SplashScreenDelay" value="3000" />
-                  <preference name="ShowSplashScreenSpinner" value="false" />
-                  """
-                  config = config.replace('</widget>', s_xml + '\n</widget>')
-          except: pass
+              if os.path.exists('user_splash.png'):
+                  with open('user_splash.png', 'r') as f:
+                      splash_b64 = f.read().strip()
+                  with open('xtrapp/res/splash.png', 'wb') as f:
+                      f.write(base64.b64decode(splash_b64 + '==='))
+                  splash_xml = '''
+                  <preference name=\"AndroidWindowSplashScreenAnimatedIcon\" value=\"res/splash.png\" />
+                  <preference name=\"AndroidWindowSplashScreenBackground\" value=\"#FFFFFF\" />
+                  <preference name=\"SplashScreenDelay\" value=\"3000\" />
+                  <preference name=\"ShowSplashScreenSpinner\" value=\"false\" />
+                  '''
+                  config = config.replace('</widget>', splash_xml + '\n</widget>')
+          except Exception as e: print("Splash Error:", e)
 
           timeout_fix = """
           <preference name="loadUrlTimeoutValue" value="700000" />
           <preference name="KeepRunning" value="true" />
+          <preference name="ErrorUrl" value="" />
           """
           config = config.replace('</widget>', timeout_fix + '\n</widget>')
 
@@ -174,7 +154,7 @@ jobs:
           else:
               p_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@style/Theme.AppCompat.NoActionBar" android:usesCleartextTraffic="true" />\n  </edit-config>\n'
           
-          if use_camera:
+          if use_cam:
               p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n  </config-file>\n'
           if use_mic:
               p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n  </config-file>\n'
@@ -183,11 +163,12 @@ jobs:
           p_xml += '</platform>'
 
           config = config.replace('</widget>', p_xml + '\n</widget>')
+          
           with open('xtrapp/config.xml', 'w', encoding='utf-8') as f:
               f.write(config)
           EOF
           
-          python3 process_xml.py
+          python3 process_app.py
 
       - name: Compile and Build APK
         run: |

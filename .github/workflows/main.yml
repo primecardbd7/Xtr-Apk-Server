@@ -43,9 +43,8 @@ jobs:
           cordova plugin add cordova-plugin-file
           cordova plugin add cordova-plugin-file-transfer
           cordova plugin add cordova-plugin-statusbar
-          # 🚨 ডিফল্ট স্প্ল্যাশ স্ক্রিন প্লাগিন বাদ দেওয়া হলো (হ্যাং ফিক্স)
 
-      - name: Process Data, Images & Fix Splash Hang 🚨
+      - name: Process Code & Native Splash Screen Magic 🚨
         env:
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
@@ -53,9 +52,10 @@ jobs:
           USE_DYNAMIC: ${{ github.event.client_payload.use_dynamic }}
           USE_SECURITY: ${{ github.event.client_payload.use_security }}
           STATUS_COLOR: ${{ github.event.client_payload.status_bar_color }}
+          APP_PKG: ${{ github.event.client_payload.package_name }}
         run: |
           cat << 'EOF' > process_app.py
-          import os, json, base64, re
+          import os, json, base64
 
           try:
               with open('user_data.json', 'r', encoding='utf-8') as f:
@@ -111,35 +111,6 @@ jobs:
           else:
               html_data += permission_script
 
-          # 🚨 ম্যাজিক: কাস্টম ফুল-স্ক্রিন স্প্ল্যাশ স্ক্রিন (Firebase Hang Fix)
-          # Cordova-এর স্প্ল্যাশ স্ক্রিন প্লাগিন বাদ দিয়ে এটা দেওয়া হলো, তাই এটা কখনোই হ্যাং করবে না!
-          if splash_b64 != 'null':
-              try:
-                  os.makedirs('xtrapp/www/img', exist_ok=True)
-                  with open('xtrapp/www/img/splash.jpg', 'wb') as f:
-                      f.write(base64.b64decode(splash_b64 + '==='))
-                  
-                  custom_splash_html = """
-                  <div id="xtr_custom_splash" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:999999999; background: #FFFFFF url('img/splash.jpg') no-repeat center center; background-size: cover; transition: opacity 0.5s ease-out;"></div>
-                  <script>
-                  window.onload = function() {
-                      setTimeout(function() {
-                          var splash = document.getElementById('xtr_custom_splash');
-                          if(splash) {
-                              splash.style.opacity = '0';
-                              setTimeout(function() { splash.style.display = 'none'; }, 500);
-                          }
-                      }, 2500); // ঠিক ২.৫ সেকেন্ড পর স্প্ল্যাশ সরে যাবে
-                  };
-                  </script>
-                  """
-                  if '<body' in html_data.lower():
-                      html_data = re.sub(r'(<body[^>]*>)', r'\1' + custom_splash_html, html_data, count=1, flags=re.IGNORECASE)
-                  else:
-                      html_data = custom_splash_html + html_data
-              except Exception as e: print("Custom Splash Error:", e)
-
-          # সিকিউরিটি (Obfuscation)
           if use_security:
               encoded_html = base64.b64encode(html_data.encode('utf-8')).decode('utf-8')
               html_data = f"<!DOCTYPE html><html><head><script>document.write(decodeURIComponent(escape(atob('{encoded_html}'))));</script></head><body></body></html>"
@@ -148,8 +119,8 @@ jobs:
           with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
               f.write(html_data)
 
-          # 🚨 আইকন ও কনফিগারেশন সেটআপ
           os.makedirs('xtrapp/res', exist_ok=True)
+          
           config = open('xtrapp/config.xml', 'r', encoding='utf-8').read()
           config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
@@ -157,8 +128,16 @@ jobs:
               try:
                   with open('xtrapp/res/icon.png', 'wb') as f:
                       f.write(base64.b64decode(icon_b64 + '==='))
-                  config = config.replace('</widget>', '    <icon src=\"res/icon.png\" />\n</widget>')
-              except Exception as e: print("Icon Error:", e)
+                  config = config.replace('</widget>', '    <icon src="res/icon.png" />\n</widget>')
+              except: pass
+
+          # 🚨 ম্যাজিক: Native Splash Screen এর জন্য ছবি সেভ করা হচ্ছে
+          if splash_b64 != 'null':
+              try:
+                  os.makedirs('xtrapp/platforms/android/app/src/main/res/drawable', exist_ok=True)
+                  with open('xtrapp/platforms/android/app/src/main/res/drawable/bg_splash.png', 'wb') as f:
+                      f.write(base64.b64decode(splash_b64 + '==='))
+              except Exception as e: print("Splash Error:", e)
 
           timeout_fix = """
           <preference name="loadUrlTimeoutValue" value="700000" />
@@ -182,9 +161,68 @@ jobs:
           p_xml += '</platform>'
 
           config = config.replace('</widget>', p_xml + '\n</widget>')
-          
           with open('xtrapp/config.xml', 'w', encoding='utf-8') as f:
               f.write(config)
+
+          # 🚨 ম্যাজিক: Cordova এর মেইন জাভা ফাইলে সরাসরি Native Splash Screen ঢুকিয়ে দেওয়া হলো!
+          app_pkg = os.environ.get('APP_PKG', 'com.app').replace('"', '').replace("'", "").strip()
+          if '.' not in app_pkg: app_pkg = 'com.xtrweb.' + app_pkg
+          java_path = f"xtrapp/platforms/android/app/src/main/java/{app_pkg.replace('.', '/')}/MainActivity.java"
+
+          native_splash_code = """
+          import android.widget.ImageView;
+          import android.widget.RelativeLayout;
+          import android.os.Handler;
+          import android.os.Looper;
+
+          public class MainActivity extends CordovaActivity {
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  
+                  // Native Splash View
+                  RelativeLayout splashLayout = new RelativeLayout(this);
+                  splashLayout.setLayoutParams(new RelativeLayout.LayoutParams(-1, -1));
+                  splashLayout.setBackgroundColor(android.graphics.Color.WHITE);
+                  
+                  ImageView splashImage = new ImageView(this);
+                  splashImage.setLayoutParams(new RelativeLayout.LayoutParams(-1, -1));
+                  splashImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                  
+                  int resId = getResources().getIdentifier("bg_splash", "drawable", getPackageName());
+                  if (resId != 0) {
+                      splashImage.setImageResource(resId);
+                  }
+                  splashLayout.addView(splashImage);
+                  
+                  // addContentView দিয়ে অ্যাপের একদম উপরে স্প্ল্যাশ স্ক্রিন বসানো হলো
+                  addContentView(splashLayout, new RelativeLayout.LayoutParams(-1, -1));
+
+                  // ৩ সেকেন্ড পর গ্যারান্টিড রিমুভ (Firebase হ্যাং করলেও এটা সরবেই)
+                  new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                      @Override
+                      public void run() {
+                          splashLayout.setVisibility(View.GONE);
+                      }
+                  }, 3000);
+                  
+                  // enable Cordova apps to see the intent that was sent to them
+                  Bundle extras = getIntent().getExtras();
+                  if (extras != null && extras.getBoolean("cdvStartInBackground", false)) {
+                      moveTaskToBack(true);
+                  }
+                  loadUrl(launchUrl);
+              }
+          }
+          """
+          
+          try:
+              if os.path.exists(java_path):
+                  java_content = open(java_path, 'r', encoding='utf-8').read()
+                  java_content = re.sub(r'public class MainActivity extends CordovaActivity \{.*\}', native_splash_code, java_content, flags=re.DOTALL)
+                  with open(java_path, 'w', encoding='utf-8') as f:
+                      f.write(java_content)
+          except Exception as e: print("Java Injection Error:", e)
           EOF
           
           python3 process_app.py

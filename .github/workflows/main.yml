@@ -44,7 +44,7 @@ jobs:
           cordova plugin add cordova-plugin-file-transfer
           cordova plugin add cordova-plugin-statusbar
 
-      - name: Process Code & Native Splash Screen Magic 🚨
+      - name: Process Code & Add Native CSS Magic 🚨
         env:
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
@@ -55,7 +55,7 @@ jobs:
           APP_PKG: ${{ github.event.client_payload.package_name }}
         run: |
           cat << 'EOF' > process_app.py
-          import os, json, base64
+          import os, json, base64, re
 
           try:
               with open('user_data.json', 'r', encoding='utf-8') as f:
@@ -74,6 +74,27 @@ jobs:
           use_dynamic = str(os.environ.get('USE_DYNAMIC', 'false')).lower() == 'true'
           use_security = str(os.environ.get('USE_SECURITY', 'false')).lower() == 'true'
           status_color = os.environ.get('STATUS_COLOR', '#0D6EFD')
+
+          # 🚨 ম্যাজিক ১: Native App Feel CSS (Tap Highlight & Selection বন্ধ করা)
+          native_css = """
+          <style>
+          * {
+              -webkit-tap-highlight-color: transparent !important;
+              -webkit-user-select: none !important;
+              user-select: none !important;
+          }
+          input, textarea {
+              -webkit-user-select: auto !important;
+              user-select: auto !important;
+          }
+          </style>
+          """
+
+          # CSS টাকে HTML এর <head> এ ইনজেক্ট করা হচ্ছে
+          if '<head>' in html_data.lower():
+              html_data = re.sub(r'(<head[^>]*>)', r'\1\n' + native_css, html_data, count=1, flags=re.IGNORECASE)
+          else:
+              html_data = native_css + html_data
 
           if 'cordova.js' not in html_data:
               html_data = '<script src=\"cordova.js\"></script>\n' + html_data
@@ -131,7 +152,6 @@ jobs:
                   config = config.replace('</widget>', '    <icon src="res/icon.png" />\n</widget>')
               except: pass
 
-          # 🚨 ম্যাজিক: Native Splash Screen এর জন্য ছবি সেভ করা হচ্ছে
           if splash_b64 != 'null':
               try:
                   os.makedirs('xtrapp/platforms/android/app/src/main/res/drawable', exist_ok=True)
@@ -164,7 +184,6 @@ jobs:
           with open('xtrapp/config.xml', 'w', encoding='utf-8') as f:
               f.write(config)
 
-          # 🚨 ম্যাজিক: Cordova এর মেইন জাভা ফাইলে সরাসরি Native Splash Screen ঢুকিয়ে দেওয়া হলো!
           app_pkg = os.environ.get('APP_PKG', 'com.app').replace('"', '').replace("'", "").strip()
           if '.' not in app_pkg: app_pkg = 'com.xtrweb.' + app_pkg
           java_path = f"xtrapp/platforms/android/app/src/main/java/{app_pkg.replace('.', '/')}/MainActivity.java"
@@ -180,7 +199,6 @@ jobs:
               public void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
                   
-                  // Native Splash View
                   RelativeLayout splashLayout = new RelativeLayout(this);
                   splashLayout.setLayoutParams(new RelativeLayout.LayoutParams(-1, -1));
                   splashLayout.setBackgroundColor(android.graphics.Color.WHITE);
@@ -194,11 +212,8 @@ jobs:
                       splashImage.setImageResource(resId);
                   }
                   splashLayout.addView(splashImage);
-                  
-                  // addContentView দিয়ে অ্যাপের একদম উপরে স্প্ল্যাশ স্ক্রিন বসানো হলো
                   addContentView(splashLayout, new RelativeLayout.LayoutParams(-1, -1));
 
-                  // ৩ সেকেন্ড পর গ্যারান্টিড রিমুভ (Firebase হ্যাং করলেও এটা সরবেই)
                   new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
                       @Override
                       public void run() {
@@ -206,7 +221,6 @@ jobs:
                       }
                   }, 3000);
                   
-                  // enable Cordova apps to see the intent that was sent to them
                   Bundle extras = getIntent().getExtras();
                   if (extras != null && extras.getBoolean("cdvStartInBackground", false)) {
                       moveTaskToBack(true);

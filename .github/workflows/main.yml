@@ -51,6 +51,7 @@ jobs:
           USE_STORAGE: ${{ github.event.client_payload.use_storage }}
           USE_DYNAMIC: ${{ github.event.client_payload.use_dynamic }}
           USE_SECURITY: ${{ github.event.client_payload.use_security }}
+          USE_FULLSCREEN: ${{ github.event.client_payload.use_fullscreen }}
           STATUS_COLOR: ${{ github.event.client_payload.status_bar_color }}
           APP_PKG: ${{ github.event.client_payload.package_name }}
         run: |
@@ -73,9 +74,9 @@ jobs:
           use_storage = str(os.environ.get('USE_STORAGE', 'false')).lower() == 'true'
           use_dynamic = str(os.environ.get('USE_DYNAMIC', 'false')).lower() == 'true'
           use_security = str(os.environ.get('USE_SECURITY', 'false')).lower() == 'true'
+          use_fullscreen = str(os.environ.get('USE_FULLSCREEN', 'false')).lower() == 'true'
           status_color = os.environ.get('STATUS_COLOR', '#0D6EFD')
 
-          # 🚨 ম্যাজিক ১: Native App Feel CSS (Tap Highlight & Selection বন্ধ করা)
           native_css = """
           <style>
           * {
@@ -90,7 +91,6 @@ jobs:
           </style>
           """
 
-          # CSS টাকে HTML এর <head> এ ইনজেক্ট করা হচ্ছে
           if '<head>' in html_data.lower():
               html_data = re.sub(r'(<head[^>]*>)', r'\1\n' + native_css, html_data, count=1, flags=re.IGNORECASE)
           else:
@@ -159,10 +159,14 @@ jobs:
                       f.write(base64.b64decode(splash_b64 + '==='))
               except Exception as e: print("Splash Error:", e)
 
-          timeout_fix = """
+          # 🚨 ম্যাজিক: ফুল স্ক্রিন লজিক অ্যাড করা হলো
+          fullscreen_xml = '    <preference name="Fullscreen" value="true" />\n' if use_fullscreen else ''
+
+          timeout_fix = f"""
           <preference name="loadUrlTimeoutValue" value="700000" />
           <preference name="KeepRunning" value="true" />
           <preference name="ErrorUrl" value="" />
+          {fullscreen_xml}
           """
           config = config.replace('</widget>', timeout_fix + '\n</widget>')
 

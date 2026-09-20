@@ -44,6 +44,15 @@ jobs:
           cordova plugin add cordova-plugin-file-transfer
           cordova plugin add cordova-plugin-statusbar
 
+      - name: Install Notification Plugin 🚨
+        env:
+          USE_NOTIFICATION: ${{ github.event.client_payload.use_notification }}
+        run: |
+          if [ "$USE_NOTIFICATION" = "true" ]; then
+            cd xtrapp
+            cordova plugin add cordova-plugin-local-notification-12
+          fi
+
       - name: Process Code & Add Native CSS Magic 🚨
         env:
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
@@ -52,6 +61,7 @@ jobs:
           USE_DYNAMIC: ${{ github.event.client_payload.use_dynamic }}
           USE_SECURITY: ${{ github.event.client_payload.use_security }}
           USE_FULLSCREEN: ${{ github.event.client_payload.use_fullscreen }}
+          USE_NOTIFICATION: ${{ github.event.client_payload.use_notification }}
           STATUS_COLOR: ${{ github.event.client_payload.status_bar_color }}
           APP_PKG: ${{ github.event.client_payload.package_name }}
         run: |
@@ -75,6 +85,7 @@ jobs:
           use_dynamic = str(os.environ.get('USE_DYNAMIC', 'false')).lower() == 'true'
           use_security = str(os.environ.get('USE_SECURITY', 'false')).lower() == 'true'
           use_fullscreen = str(os.environ.get('USE_FULLSCREEN', 'false')).lower() == 'true'
+          use_notif = str(os.environ.get('USE_NOTIFICATION', 'false')).lower() == 'true'
           status_color = os.environ.get('STATUS_COLOR', '#0D6EFD')
 
           native_css = """
@@ -102,6 +113,7 @@ jobs:
           cam_str = 'true' if use_cam else 'false'
           mic_str = 'true' if use_mic else 'false'
           store_str = 'true' if use_storage else 'false'
+          notif_str = 'true' if use_notif else 'false'
 
           if use_dynamic:
               status_script = "StatusBar.overlaysWebView(true); StatusBar.backgroundColorByHexString('#00000000'); StatusBar.styleDefault();"
@@ -122,7 +134,17 @@ jobs:
                   list.push(permissions.WRITE_EXTERNAL_STORAGE);
                   list.push(permissions.READ_EXTERNAL_STORAGE);
               }}
+              if ({notif_str}) list.push('android.permission.POST_NOTIFICATIONS');
+
               if (list.length > 0) permissions.requestPermissions(list, function(){{}}, function(){{}});
+              
+              if ({notif_str}) {{
+                  setTimeout(function() {{
+                      if (window.cordova && cordova.plugins && cordova.plugins.notification) {{
+                          cordova.plugins.notification.local.requestPermission(function(granted) {{}});
+                      }}
+                  }}, 1000);
+              }}
           }}, false);
           </script>
           """
@@ -159,7 +181,6 @@ jobs:
                       f.write(base64.b64decode(splash_b64 + '==='))
               except Exception as e: print("Splash Error:", e)
 
-          # 🚨 ম্যাজিক: ফুল স্ক্রিন লজিক অ্যাড করা হলো
           fullscreen_xml = '    <preference name="Fullscreen" value="true" />\n' if use_fullscreen else ''
 
           timeout_fix = f"""
@@ -182,6 +203,9 @@ jobs:
               p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n  </config-file>\n'
           if use_storage:
               p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n  </config-file>\n'
+          if use_notif:
+              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />\n  </config-file>\n'
+          
           p_xml += '</platform>'
 
           config = config.replace('</widget>', p_xml + '\n</widget>')

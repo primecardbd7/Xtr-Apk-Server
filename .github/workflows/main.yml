@@ -154,9 +154,131 @@ jobs:
           else:
               html_data += permission_script
 
+          # 🚨 আপগ্রেডেড XTR APP SECURITY (ANTI-HACK SHIELD)
           if use_security:
               encoded_html = base64.b64encode(html_data.encode('utf-8')).decode('utf-8')
-              html_data = f"<!DOCTYPE html><html><head><script>document.write(decodeURIComponent(escape(atob('{encoded_html}'))));</script></head><body></body></html>"
+              
+              security_template = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Protected by XTR Security</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+body, html { width: 100%; height: 100%; background: #07070A; color: #FFFFFF; overflow: hidden; }
+#xtr-security-screen {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: radial-gradient(circle at center, #1A050A 0%, #07070A 80%);
+    display: flex; flex-direction: column; justify-content: space-between; align-items: center;
+    padding: 24px 20px; z-index: 2147483647; text-align: center;
+}
+.xtr-top-bar { width: 100%; display: flex; justify-content: flex-start; align-items: center; }
+.xtr-version-tag {
+    background: rgba(255, 0, 60, 0.12); border: 1px solid rgba(255, 0, 60, 0.3);
+    color: #FF4D6D; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600;
+    letter-spacing: 0.5px; font-family: monospace; box-shadow: 0 0 10px rgba(255, 0, 60, 0.2);
+}
+.xtr-center-box { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.xtr-shield-icon {
+    width: 80px; height: 80px; margin-bottom: 20px;
+    filter: drop-shadow(0 0 15px rgba(255, 0, 60, 0.6));
+    animation: xtrPulse 2s infinite ease-in-out;
+}
+@keyframes xtrPulse {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 15px rgba(255, 0, 60, 0.6)); }
+    50% { transform: scale(1.08); filter: drop-shadow(0 0 25px rgba(255, 0, 60, 0.9)); }
+}
+.xtr-title {
+    color: #FF003C; font-size: 34px; font-weight: 900; letter-spacing: 1.5px;
+    text-transform: uppercase; margin-bottom: 8px;
+    text-shadow: 0 0 15px rgba(255, 0, 60, 0.8), 0 0 30px rgba(255, 0, 60, 0.4);
+}
+.xtr-badge {
+    background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #CCCCCC; padding: 4px 12px; border-radius: 6px; font-size: 12px;
+    letter-spacing: 1px; text-transform: uppercase; font-weight: 600;
+}
+.xtr-footer-box { max-width: 360px; }
+.xtr-details {
+    color: #8E8E93; font-size: 12px; line-height: 1.6; font-weight: 400;
+}
+.xtr-copyright {
+    margin-top: 8px; color: #55555A; font-size: 11px; letter-spacing: 0.5px;
+}
+</style>
+</head>
+<body>
+<div id="xtr-security-screen" style="display:none;">
+    <div class="xtr-top-bar">
+        <div class="xtr-version-tag">Version: 1.0.4</div>
+    </div>
+    <div class="xtr-center-box">
+        <svg class="xtr-shield-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L4 5V11.09C4 16.14 7.41 20.85 12 22C16.59 20.85 20 16.14 20 11.09V5L12 2Z" fill="#FF003C" fill-opacity="0.15" stroke="#FF003C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12 8V12M12 16H12.01" stroke="#FF003C" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h1 class="xtr-title">XTR Security</h1>
+        <div class="xtr-badge">[ Unauthorized Execution Detected ]</div>
+    </div>
+    <div class="xtr-footer-box">
+        <p class="xtr-details">This application's source code is encrypted and protected by Xtr Studio Anti-Hack System. Unauthorized copying, tampering, or external viewing is strictly prohibited.</p>
+        <p class="xtr-copyright">&copy; Xtr Studio Security Protection</p>
+    </div>
+</div>
+
+<script>
+(function() {
+    var payload = "__XTR_PAYLOAD__";
+
+    function verifyEnvironment() {
+        try {
+            var href = window.location.href || '';
+            var proto = window.location.protocol || '';
+            var host = window.location.hostname || '';
+
+            // 🚨 মেমোরি কার্ড বা কোনো ফাইল ভিউয়ার/কোড এডিটর থেকে রান করার চেষ্টা:
+            if (href.indexOf('/storage/emulated/') !== -1 ||
+                href.indexOf('/sdcard/') !== -1 ||
+                href.indexOf('content://') === 0 ||
+                href.indexOf('/data/user/') !== -1 ||
+                (href.indexOf('file:') === 0 && href.indexOf('android_asset') === -1)) {
+                return false;
+            }
+
+            // 🚨 আসল Cordova অ্যাপের লোকালহোস্ট অথবা অ্যান্ড্রয়েড এসেট পাথ চেক:
+            var isLocalhost = (proto === 'https:' || proto === 'http:') && (host === 'localhost');
+            var isAsset = (href.indexOf('file:///android_asset/') === 0);
+
+            if (!isLocalhost && !isAsset) {
+                return false;
+            }
+
+            return true;
+        } catch(e) {
+            return false;
+        }
+    }
+
+    if (!verifyEnvironment()) {
+        payload = null;
+        document.getElementById('xtr-security-screen').style.display = 'flex';
+    } else {
+        try {
+            var decoded = decodeURIComponent(escape(atob(payload)));
+            payload = null;
+            document.open();
+            document.write(decoded);
+            document.close();
+        } catch(err) {
+            document.getElementById('xtr-security-screen').style.display = 'flex';
+        }
+    }
+})();
+</script>
+</body>
+</html>"""
+              html_data = security_template.replace('__XTR_PAYLOAD__', encoded_html)
 
           os.makedirs('xtrapp/www', exist_ok=True)
           with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:

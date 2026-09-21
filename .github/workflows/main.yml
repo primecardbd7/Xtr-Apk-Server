@@ -154,11 +154,9 @@ jobs:
           else:
               html_data += permission_script
 
-          # 🚨 ১০০% ফিক্সড XTR APP SECURITY (ANTI-HACK SHIELD)
           if use_security:
               encoded_html = base64.b64encode(html_data.encode('utf-8')).decode('utf-8')
-              sec_html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"><title>Protected by XTR Security</title><style>*{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}body{width:100vw;height:100vh;background:radial-gradient(circle at center,#1a050a 0%,#07070a 80%);color:#fff;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;align-items:center;padding:24px 20px;text-align:center}.top{width:100%;text-align:left}.ver{background:rgba(255,0,60,0.12);border:1px solid rgba(255,0,60,0.3);color:#ff4d6d;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:600;font-family:monospace;display:inline-block;box-shadow:0 0 10px rgba(255,0,60,0.2)}.center{display:flex;flex-direction:column;align-items:center}.shield{width:75px;height:75px;margin-bottom:15px;fill:none;stroke:#ff003c;stroke-width:2;filter:drop-shadow(0 0 15px rgba(255,0,60,0.6))}.title{color:#ff003c;font-size:32px;font-weight:900;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;text-shadow:0 0 20px #ff003c,0 0 40px #ff003c}.badge{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#ccc;padding:4px 12px;border-radius:6px;font-size:12px;text-transform:uppercase}.bottom{max-width:360px}.desc{color:#8e8e93;font-size:12px;line-height:1.6}.copy{margin-top:6px;color:#55555a;font-size:11px}</style></head><body><div class="top"><div class="ver">Version: 1.0.4</div></div><div class="center"><svg class="shield" viewBox="0 0 24 24"><path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3z"/><path d="M12 8v4m0 4h.01"/></svg><h1 class="title">XTR Security</h1><div class="badge">[ Unauthorized Execution Detected ]</div></div><div class="bottom"><p class="desc">This application\'s source code is encrypted and protected by Xtr Studio Anti-Hack System. Unauthorized copying, tampering, or external viewing is strictly prohibited.</p><p class="copy">&copy; Xtr Studio Security Protection</p></div><script>(function(){var p="__XTR_PAYLOAD__";function chk(){try{var h=window.location.href||"",pt=window.location.protocol||"",hn=window.location.hostname||"";if(h.indexOf("/storage/emulated/")!==-1||h.indexOf("/sdcard/")!==-1||h.indexOf("content://")===0||h.indexOf("/data/user/")!==-1||(h.indexOf("file:")===0&&h.indexOf("android_asset")===-1)){return false;}var il=(pt==="https:"||pt==="http:")&&(hn==="localhost");var ia=(h.indexOf("file:///android_asset/")===0);return il||ia;}catch(e){return false;}}if(!chk()){p=null;}else{try{var d=decodeURIComponent(escape(atob(p)));p=null;document.open();document.write(d);document.close();}catch(e){}}})();</script></body></html>'
-              html_data = sec_html.replace('__XTR_PAYLOAD__', encoded_html)
+              html_data = f"<!DOCTYPE html><html><head><script>document.write(decodeURIComponent(escape(atob('{encoded_html}'))));</script></head><body></body></html>"
 
           os.makedirs('xtrapp/www', exist_ok=True)
           with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
@@ -223,7 +221,6 @@ jobs:
           import android.widget.RelativeLayout;
           import android.os.Handler;
           import android.os.Looper;
-          import android.view.View;
 
           public class MainActivity extends CordovaActivity {
               @Override

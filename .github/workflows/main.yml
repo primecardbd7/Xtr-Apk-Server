@@ -44,14 +44,13 @@ jobs:
           cordova plugin add cordova-plugin-file-transfer
           cordova plugin add cordova-plugin-statusbar
 
-      - name: Install Notification & Background Plugin 🚨
+      - name: Install Notification Plugin 🚨
         env:
           USE_NOTIFICATION: ${{ github.event.client_payload.use_notification }}
         run: |
           if [ "$USE_NOTIFICATION" = "true" ]; then
             cd xtrapp
             cordova plugin add cordova-plugin-local-notification-12
-            cordova plugin add cordova-plugin-background-mode
           fi
 
       - name: Process Code & Add Native CSS Magic 🚨
@@ -144,18 +143,6 @@ jobs:
                       if (window.cordova && cordova.plugins && cordova.plugins.notification) {{
                           cordova.plugins.notification.local.requestPermission(function(granted) {{}});
                       }}
-                      if (window.cordova && cordova.plugins && cordova.plugins.backgroundMode) {{
-                          cordova.plugins.backgroundMode.enable();
-                          cordova.plugins.backgroundMode.setDefaults({{
-                              title: "App Service",
-                              text: "Running in background",
-                              hidden: true,
-                              resume: true
-                          }});
-                          cordova.plugins.backgroundMode.on('activate', function() {{
-                              cordova.plugins.backgroundMode.disableWebViewOptimizations();
-                          }});
-                      }}
                   }}, 1000);
               }}
           }}, false);
@@ -217,7 +204,7 @@ jobs:
           if use_storage:
               p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n  </config-file>\n'
           if use_notif:
-              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n  </config-file>\n'
+              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />\n  </config-file>\n'
           
           p_xml += '</platform>'
 

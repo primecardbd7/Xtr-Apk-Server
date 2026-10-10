@@ -118,34 +118,34 @@ jobs:
           if use_dynamic:
               status_script = "StatusBar.overlaysWebView(true); StatusBar.backgroundColorByHexString('#00000000'); StatusBar.styleDefault();"
           else:
-              status_script = f"StatusBar.overlaysWebView(false); StatusBar.backgroundColorByHexString('{status_color}'); StatusBar.styleLightContent();"
+              status_script = "StatusBar.overlaysWebView(false); StatusBar.backgroundColorByHexString('" + status_color + "'); StatusBar.styleLightContent();"
 
-          permission_script = f"""
+          permission_script = """
           <script>
-          document.addEventListener('deviceready', function() {{
-              if(StatusBar) {{ {status_script} }}
+          document.addEventListener('deviceready', function() {
+              if(StatusBar) { """ + status_script + """ }
               var permissions = cordova.plugins.permissions;
               var list = [];
-              if ({cam_str}) list.push(permissions.CAMERA);
-              if ({mic_str}) list.push(permissions.RECORD_AUDIO);
-              if ({store_str}) {{
+              if (""" + cam_str + """) list.push(permissions.CAMERA);
+              if (""" + mic_str + """) list.push(permissions.RECORD_AUDIO);
+              if (""" + store_str + """) {
                   list.push('android.permission.READ_MEDIA_IMAGES');
                   list.push('android.permission.READ_MEDIA_VIDEO');
                   list.push(permissions.WRITE_EXTERNAL_STORAGE);
                   list.push(permissions.READ_EXTERNAL_STORAGE);
-              }}
-              if ({notif_str}) list.push('android.permission.POST_NOTIFICATIONS');
+              }
+              if (""" + notif_str + """) list.push('android.permission.POST_NOTIFICATIONS');
 
-              if (list.length > 0) permissions.requestPermissions(list, function(){{}}, function(){{}});
+              if (list.length > 0) permissions.requestPermissions(list, function(){}, function(){});
               
-              if ({notif_str}) {{
-                  setTimeout(function() {{
-                      if (window.cordova && cordova.plugins && cordova.plugins.notification) {{
-                          cordova.plugins.notification.local.requestPermission(function(granted) {{}});
-                      }}
-                  }}, 1000);
-              }}
-          }}, false);
+              if (""" + notif_str + """) {
+                  setTimeout(function() {
+                      if (window.cordova && cordova.plugins && cordova.plugins.notification) {
+                          cordova.plugins.notification.local.requestPermission(function(granted) {});
+                      }
+                  }, 1000);
+              }
+          }, false);
           </script>
           """
           
@@ -154,98 +154,94 @@ jobs:
           else:
               html_data += permission_script
 
-          # 🚨 XTR ULTIMATE MILITARY GRADE SECURITY 🚨
+          # 🚨 XTR ULTIMATE MILITARY GRADE SECURITY (100% ERROR FREE FIX) 🚨
           if use_security:
-              # 1. URL Encode and XOR Encrypt
-              ascii_payload = urllib.parse.quote(html_data)
+              encoded_url = urllib.parse.quote(html_data)
               secret_key = "XTR_ULTIMATE_MILITARY_SHIELD_2026_KEY"
-              xored = ''.join(chr(ord(c) ^ ord(secret_key[i % len(secret_key)])) for i, c in enumerate(ascii_payload))
-              b64_payload = base64.b64encode(xored.encode('utf-8')).decode('utf-8')
+              
+              xored_bytes = bytearray()
+              for i, c in enumerate(encoded_url):
+                  xored_bytes.append(ord(c) ^ ord(secret_key[i % len(secret_key)]))
+                  
+              b64_payload = base64.b64encode(xored_bytes).decode('utf-8')
 
-              # 2. Raw JavaScript Logic (Will be converted to integer array)
-              core_js = f"""
-              (function(){{
-                  setInterval(function(){{ Function("debugger")(); }}, 50);
-                  var p = "{b64_payload}";
-                  var k = "{secret_key}";
+              core_js = """
+              (function(){
+                  setInterval(function(){ Function("debugger")(); }, 50);
+                  var p = "B64_PAYLOAD_HERE";
+                  var k = "SECRET_KEY_HERE";
 
-                  function checkEnv() {{
+                  function checkEnv() {
                       var h = window.location.href || '';
                       var pr = window.location.protocol || '';
                       var hn = window.location.hostname || '';
                       var bad = ['/storage/emulated/', '/sdcard/', 'content://', '/data/user/'];
-                      for(var i=0; i<bad.length; i++) {{
+                      for(var i=0; i<bad.length; i++) {
                           if(h.indexOf(bad[i]) !== -1) return false;
-                      }}
+                      }
                       if ((pr === 'https:' || pr === 'http:') && hn === 'localhost') return true;
                       if (h.indexOf('file:///android_asset/') === 0) return true;
                       return false;
-                  }}
+                  }
 
-                  function dec(d, key) {{
-                      var s = decodeURIComponent(escape(atob(d)));
+                  function dec(d, key) {
+                      var s = atob(d);
                       var r = '';
-                      for(var i=0; i<s.length; i++) {{
+                      for(var i=0; i<s.length; i++) {
                           r += String.fromCharCode(s.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-                      }}
+                      }
                       return decodeURIComponent(r);
-                  }}
+                  }
 
-                  if (!checkEnv()) {{
+                  if (!checkEnv()) {
                       document.getElementById('xtr-security-screen').style.display = 'flex';
-                      setTimeout(function(){{
-                          while(true) {{ history.pushState(0, 0, ""); }}
-                      }}, 2000);
-                  }} else {{
-                      try {{
+                      setTimeout(function(){
+                          while(true) { history.pushState(0, 0, ""); }
+                      }, 2000);
+                  } else {
+                      try {
                           var cleanHtml = dec(p, k);
                           document.open();
                           document.write(cleanHtml);
                           document.close();
-                      }} catch(e) {{
+                      } catch(e) {
                           document.getElementById('xtr-security-screen').style.display = 'flex';
-                      }}
-                  }}
-              }})();
-              """
+                      }
+                  }
+              })();
+              """.replace("B64_PAYLOAD_HERE", b64_payload).replace("SECRET_KEY_HERE", secret_key)
 
-              # 3. Complete JS Obfuscation (Integer Array)
               js_array = ','.join(str(ord(c)) for c in core_js)
               
-              bootstrapper = f"""<script>
-              var _0x9a4b = [{js_array}];
-              var _0x1c2d = '';
-              for(var _0x=0; _0x<_0x9a4b.length; _0x++){{_0x1c2d+=String.fromCharCode(_0x9a4b[_0x]);}}
-              Function(_0x1c2d)();
-              </script>"""
+              bootstrapper = "<script>var _0x9a4b = [" + js_array + "];var _0x1c2d = '';for(var _0x=0; _0x<_0x9a4b.length; _0x++){_0x1c2d+=String.fromCharCode(_0x9a4b[_0x]);}Function(_0x1c2d)();</script>"
 
-              html_data = f"""<!DOCTYPE html>
+              security_template = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Protected by XTR Security</title>
 <style>
-* {{ margin: 0; padding: 0; box-sizing: border-box; font-family: monospace; }}
-body, html {{ width: 100%; height: 100%; background: #000; color: #FFF; overflow: hidden; }}
-#xtr-security-screen {{
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: monospace; }
+body, html { width: 100%; height: 100%; background: #000; color: #FFF; overflow: hidden; }
+#xtr-security-screen {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
     background: radial-gradient(circle at center, #1A050A 0%, #000000 90%);
     display: flex; flex-direction: column; justify-content: center; align-items: center;
     padding: 20px; z-index: 2147483647; text-align: center;
-}}
-.xtr-shield-icon {{
+}
+.xtr-shield-icon {
     width: 80px; height: 80px; margin-bottom: 20px;
     filter: drop-shadow(0 0 15px rgba(255, 0, 60, 0.8));
     animation: xtrPulse 1.5s infinite alternate;
-}}
-@keyframes xtrPulse {{
-    0% {{ transform: scale(1); filter: drop-shadow(0 0 15px rgba(255, 0, 60, 0.8)); }}
-    100% {{ transform: scale(1.1); filter: drop-shadow(0 0 30px rgba(255, 0, 60, 1)); }}
-}}
-.xtr-title {{ color: #FF003C; font-size: 32px; font-weight: bold; text-transform: uppercase; margin-bottom: 10px; text-shadow: 0 0 20px #FF003C; }}
-.xtr-badge {{ background: rgba(255, 0, 60, 0.2); border: 1px solid #FF003C; color: #FFF; padding: 5px 15px; font-size: 14px; border-radius: 5px; margin-bottom: 20px; }}
-.xtr-details {{ color: #AAA; font-size: 12px; line-height: 1.5; max-width: 400px; }}
+}
+@keyframes xtrPulse {
+    0% { transform: scale(1); filter: drop-shadow(0 0 15px rgba(255, 0, 60, 0.8)); }
+    100% { transform: scale(1.1); filter: drop-shadow(0 0 30px rgba(255, 0, 60, 1)); }
+}
+.xtr-title { color: #FF003C; font-size: 32px; font-weight: bold; text-transform: uppercase; margin-bottom: 10px; text-shadow: 0 0 20px #FF003C; }
+.xtr-badge { background: rgba(255, 0, 60, 0.2); border: 1px solid #FF003C; color: #FFF; padding: 5px 15px; font-size: 14px; border-radius: 5px; margin-bottom: 20px; }
+.xtr-details { color: #AAA; font-size: 12px; line-height: 1.5; max-width: 400px; }
 </style>
 </head>
 <body>
@@ -258,9 +254,10 @@ body, html {{ width: 100%; height: 100%; background: #000; color: #FFF; overflow
     <div class="xtr-badge">[ ILLEGAL ACCESS BLOCKED ]</div>
     <p class="xtr-details">This application's source code is military-grade encrypted by Xtr Studio. Unauthorized copying, tampering, or external viewing triggers an infinite freeze loop.</p>
 </div>
-{bootstrapper}
+BOOTSTRAPPER_HERE
 </body>
 </html>"""
+              html_data = security_template.replace('BOOTSTRAPPER_HERE', bootstrapper)
 
           os.makedirs('xtrapp/www', exist_ok=True)
           with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
@@ -287,12 +284,12 @@ body, html {{ width: 100%; height: 100%; background: #000; color: #FFF; overflow
 
           fullscreen_xml = '    <preference name="Fullscreen" value="true" />\n' if use_fullscreen else ''
 
-          timeout_fix = f"""
+          timeout_fix = """
           <preference name="loadUrlTimeoutValue" value="700000" />
           <preference name="KeepRunning" value="true" />
           <preference name="ErrorUrl" value="" />
-          {fullscreen_xml}
-          """
+          """ + fullscreen_xml
+          
           config = config.replace('</widget>', timeout_fix + '\n</widget>')
 
           p_xml = '<platform name="android">\n'

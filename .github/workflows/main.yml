@@ -216,47 +216,47 @@ jobs:
               bootstrapper = "<script>var _0x9a4b = [" + js_array + "];var _0x1c2d = '';for(var _0x=0; _0x<_0x9a4b.length; _0x++){_0x1c2d+=String.fromCharCode(_0x9a4b[_0x]);}Function(_0x1c2d)();</script>"
 
               security_template = """<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Protected by XTR Security</title>
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; font-family: monospace; }
-body, html { width: 100%; height: 100%; background: #000; color: #FFF; overflow: hidden; }
-#xtr-security-screen {
-    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: radial-gradient(circle at center, #1A050A 0%, #000000 90%);
-    display: flex; flex-direction: column; justify-content: center; align-items: center;
-    padding: 20px; z-index: 2147483647; text-align: center;
-}
-.xtr-shield-icon {
-    width: 80px; height: 80px; margin-bottom: 20px;
-    filter: drop-shadow(0 0 15px rgba(255, 0, 60, 0.8));
-    animation: xtrPulse 1.5s infinite alternate;
-}
-@keyframes xtrPulse {
-    0% { transform: scale(1); filter: drop-shadow(0 0 15px rgba(255, 0, 60, 0.8)); }
-    100% { transform: scale(1.1); filter: drop-shadow(0 0 30px rgba(255, 0, 60, 1)); }
-}
-.xtr-title { color: #FF003C; font-size: 32px; font-weight: bold; text-transform: uppercase; margin-bottom: 10px; text-shadow: 0 0 20px #FF003C; }
-.xtr-badge { background: rgba(255, 0, 60, 0.2); border: 1px solid #FF003C; color: #FFF; padding: 5px 15px; font-size: 14px; border-radius: 5px; margin-bottom: 20px; }
-.xtr-details { color: #AAA; font-size: 12px; line-height: 1.5; max-width: 400px; }
-</style>
-</head>
-<body>
-<div id="xtr-security-screen" style="display:none;">
-    <svg class="xtr-shield-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12 2L4 5V11.09C4 16.14 7.41 20.85 12 22C16.59 20.85 20 16.14 20 11.09V5L12 2Z" fill="#FF003C" fill-opacity="0.2" stroke="#FF003C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M12 8V12M12 16H12.01" stroke="#FF003C" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-    <h1 class="xtr-title">XTR SECURITY</h1>
-    <div class="xtr-badge">[ ILLEGAL ACCESS BLOCKED ]</div>
-    <p class="xtr-details">This application's source code is military-grade encrypted by Xtr Studio. Unauthorized copying, tampering, or external viewing triggers an infinite freeze loop.</p>
-</div>
-BOOTSTRAPPER_HERE
-</body>
-</html>"""
+              <html lang="en">
+              <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+              <title>Protected by XTR Security</title>
+              <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; font-family: monospace; }
+              body, html { width: 100%; height: 100%; background: #000; color: #FFF; overflow: hidden; }
+              #xtr-security-screen {
+                  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                  background: radial-gradient(circle at center, #1A050A 0%, #000000 90%);
+                  display: flex; flex-direction: column; justify-content: center; align-items: center;
+                  padding: 20px; z-index: 2147483647; text-align: center;
+              }
+              .xtr-shield-icon {
+                  width: 80px; height: 80px; margin-bottom: 20px;
+                  filter: drop-shadow(0 0 15px rgba(255, 0, 60, 0.8));
+                  animation: xtrPulse 1.5s infinite alternate;
+              }
+              @keyframes xtrPulse {
+                  0% { transform: scale(1); filter: drop-shadow(0 0 15px rgba(255, 0, 60, 0.8)); }
+                  100% { transform: scale(1.1); filter: drop-shadow(0 0 30px rgba(255, 0, 60, 1)); }
+              }
+              .xtr-title { color: #FF003C; font-size: 32px; font-weight: bold; text-transform: uppercase; margin-bottom: 10px; text-shadow: 0 0 20px #FF003C; }
+              .xtr-badge { background: rgba(255, 0, 60, 0.2); border: 1px solid #FF003C; color: #FFF; padding: 5px 15px; font-size: 14px; border-radius: 5px; margin-bottom: 20px; }
+              .xtr-details { color: #AAA; font-size: 12px; line-height: 1.5; max-width: 400px; }
+              </style>
+              </head>
+              <body>
+              <div id="xtr-security-screen" style="display:none;">
+                  <svg class="xtr-shield-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12 2L4 5V11.09C4 16.14 7.41 20.85 12 22C16.59 20.85 20 16.14 20 11.09V5L12 2Z" fill="#FF003C" fill-opacity="0.2" stroke="#FF003C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      <path d="M12 8V12M12 16H12.01" stroke="#FF003C" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <h1 class="xtr-title">XTR SECURITY</h1>
+                  <div class="xtr-badge">[ ILLEGAL ACCESS BLOCKED ]</div>
+                  <p class="xtr-details">This application's source code is military-grade encrypted by Xtr Studio. Unauthorized copying, tampering, or external viewing triggers an infinite freeze loop.</p>
+              </div>
+              BOOTSTRAPPER_HERE
+              </body>
+              </html>"""
               html_data = security_template.replace('BOOTSTRAPPER_HERE', bootstrapper)
 
           os.makedirs('xtrapp/www', exist_ok=True)

@@ -68,6 +68,12 @@ jobs:
           cat << 'EOF' > process_app.py
           import os, json, base64, re, urllib.parse
 
+          # 🚨 ম্যাজিক: ছবি ডিকোড করার প্যাডিং এরর চিরতরে ফিক্স করা হলো
+          def decode_b64_safe(b64_str):
+              pad = len(b64_str) % 4
+              if pad: b64_str += '=' * (4 - pad)
+              return base64.b64decode(b64_str)
+
           try:
               with open('user_data.json', 'r', encoding='utf-8') as f:
                   data = json.load(f)
@@ -154,7 +160,7 @@ jobs:
           else:
               html_data += permission_script
 
-          # 🚨 XTR ULTIMATE MILITARY GRADE SECURITY (100% ERROR FREE FIX) 🚨
+          # 🚨 XTR ULTIMATE MILITARY GRADE SECURITY 🚨
           if use_security:
               encoded_url = urllib.parse.quote(html_data)
               secret_key = "XTR_ULTIMATE_MILITARY_SHIELD_2026_KEY"
@@ -268,18 +274,20 @@ jobs:
           config = open('xtrapp/config.xml', 'r', encoding='utf-8').read()
           config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
+          # 🚨 আইকন সেভ করার ফিক্স
           if icon_b64 != 'null':
               try:
                   with open('xtrapp/res/icon.png', 'wb') as f:
-                      f.write(base64.b64decode(icon_b64 + '==='))
+                      f.write(decode_b64_safe(icon_b64))
                   config = config.replace('</widget>', '    <icon src="res/icon.png" />\n</widget>')
-              except: pass
+              except Exception as e: print("Icon Error:", e)
 
+          # 🚨 স্প্ল্যাশ স্ক্রিন সেভ করার ফিক্স
           if splash_b64 != 'null':
               try:
                   os.makedirs('xtrapp/platforms/android/app/src/main/res/drawable', exist_ok=True)
                   with open('xtrapp/platforms/android/app/src/main/res/drawable/bg_splash.png', 'wb') as f:
-                      f.write(base64.b64decode(splash_b64 + '==='))
+                      f.write(decode_b64_safe(splash_b64))
               except Exception as e: print("Splash Error:", e)
 
           fullscreen_xml = '    <preference name="Fullscreen" value="true" />\n' if use_fullscreen else ''
@@ -317,38 +325,49 @@ jobs:
           if '.' not in app_pkg: app_pkg = 'com.xtrweb.' + app_pkg
           java_path = f"xtrapp/platforms/android/app/src/main/java/{app_pkg.replace('.', '/')}/MainActivity.java"
 
+          # 🚨 ম্যাজিক: ফুল স্ক্রিন কাস্টম স্প্ল্যাশ স্ক্রিন রেন্ডারার
           native_splash_code = """
           import android.widget.ImageView;
           import android.widget.RelativeLayout;
           import android.os.Handler;
           import android.os.Looper;
+          import android.view.View;
 
           public class MainActivity extends CordovaActivity {
               @Override
               public void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
                   
+                  int resId = getResources().getIdentifier("bg_splash", "drawable", getPackageName());
+                  if (resId != 0) {
+                      getWindow().setBackgroundDrawableResource(resId);
+                  }
+                  
                   RelativeLayout splashLayout = new RelativeLayout(this);
                   splashLayout.setLayoutParams(new RelativeLayout.LayoutParams(-1, -1));
-                  splashLayout.setBackgroundColor(android.graphics.Color.WHITE);
+                  splashLayout.setBackgroundColor(android.graphics.Color.parseColor("#121212"));
                   
                   ImageView splashImage = new ImageView(this);
                   splashImage.setLayoutParams(new RelativeLayout.LayoutParams(-1, -1));
                   splashImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
                   
-                  int resId = getResources().getIdentifier("bg_splash", "drawable", getPackageName());
                   if (resId != 0) {
                       splashImage.setImageResource(resId);
-                  }
-                  splashLayout.addView(splashImage);
-                  addContentView(splashLayout, new RelativeLayout.LayoutParams(-1, -1));
+                      splashLayout.addView(splashImage);
+                      addContentView(splashLayout, new RelativeLayout.LayoutParams(-1, -1));
 
-                  new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
-                      @Override
-                      public void run() {
-                          splashLayout.setVisibility(View.GONE);
-                      }
-                  }, 3000);
+                      new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                          @Override
+                          public void run() {
+                              splashLayout.animate().alpha(0.0f).setDuration(400).withEndAction(new Runnable() {
+                                  @Override
+                                  public void run() {
+                                      splashLayout.setVisibility(View.GONE);
+                                  }
+                              });
+                          }
+                      }, 2500);
+                  }
                   
                   Bundle extras = getIntent().getExtras();
                   if (extras != null && extras.getBoolean("cdvStartInBackground", false)) {

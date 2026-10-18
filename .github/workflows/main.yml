@@ -68,7 +68,7 @@ jobs:
           cat << 'EOF' > process_app.py
           import os, json, base64, re, urllib.parse
 
-          # 🚨 ম্যাজিক: ছবি ডিকোড করার প্যাডিং এরর চিরতরে ফিক্স করা হলো
+          # 🚨 ম্যাজিক: ছবি ডিকোড করার প্যাডিং এরর ফিক্স
           def decode_b64_safe(b64_str):
               pad = len(b64_str) % 4
               if pad: b64_str += '=' * (4 - pad)
@@ -274,29 +274,38 @@ jobs:
           config = open('xtrapp/config.xml', 'r', encoding='utf-8').read()
           config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
-          # 🚨 আইকন সেভ করার ফিক্স
+          # 🚨 আইকন সেভ এবং ডিফল্ট রোবট রিমুভ ফিক্স
           if icon_b64 != 'null':
               try:
                   with open('xtrapp/res/icon.png', 'wb') as f:
                       f.write(decode_b64_safe(icon_b64))
-                  config = config.replace('</widget>', '    <icon src="res/icon.png" />\n</widget>')
+                  config = config.replace('</widget>', '    <icon src="res/icon.png" />\n    <preference name="AndroidWindowSplashScreenAnimatedIcon" value="res/icon.png" />\n</widget>')
               except Exception as e: print("Icon Error:", e)
 
-          # 🚨 স্প্ল্যাশ স্ক্রিন সেভ করার ফিক্স
+          # 🚨 স্প্ল্যাশ স্ক্রিন সেভ এবং resource-file দিয়ে ফিক্স
           if splash_b64 != 'null':
               try:
-                  os.makedirs('xtrapp/platforms/android/app/src/main/res/drawable', exist_ok=True)
-                  with open('xtrapp/platforms/android/app/src/main/res/drawable/bg_splash.png', 'wb') as f:
+                  with open('xtrapp/res/bg_splash.png', 'wb') as f:
                       f.write(decode_b64_safe(splash_b64))
+                  # resource-file দিলে Cordova আর জীবনেও ছবি ডিলিট করতে পারবে না
+                  config = config.replace('</widget>', '    <resource-file src="res/bg_splash.png" target="app/src/main/res/drawable/bg_splash.png" />\n</widget>')
               except Exception as e: print("Splash Error:", e)
 
+          # 🚨 Cordova-এর ডিফল্ট স্প্ল্যাশ ও স্পিনার চিরতরে বন্ধ করা
+          splash_prefs = """
+          <preference name="SplashScreenDelay" value="0" />
+          <preference name="FadeSplashScreenDuration" value="0" />
+          <preference name="ShowSplashScreenSpinner" value="false" />
+          <preference name="AndroidWindowSplashScreenBackground" value="#121212" />
+          """
+          
           fullscreen_xml = '    <preference name="Fullscreen" value="true" />\n' if use_fullscreen else ''
 
           timeout_fix = """
           <preference name="loadUrlTimeoutValue" value="700000" />
           <preference name="KeepRunning" value="true" />
           <preference name="ErrorUrl" value="" />
-          """ + fullscreen_xml
+          """ + fullscreen_xml + splash_prefs
           
           config = config.replace('</widget>', timeout_fix + '\n</widget>')
 
@@ -325,7 +334,6 @@ jobs:
           if '.' not in app_pkg: app_pkg = 'com.xtrweb.' + app_pkg
           java_path = f"xtrapp/platforms/android/app/src/main/java/{app_pkg.replace('.', '/')}/MainActivity.java"
 
-          # 🚨 ম্যাজিক: ফুল স্ক্রিন কাস্টম স্প্ল্যাশ স্ক্রিন রেন্ডারার
           native_splash_code = """
           import android.widget.ImageView;
           import android.widget.RelativeLayout;

@@ -24,9 +24,7 @@ jobs:
           node-version: '20'
 
       - name: Install Cordova
-        run: |
-          npm install -g cordova
-          cordova telemetry off
+        run: npm install -g cordova
 
       - name: Create Fresh Android App
         run: |
@@ -55,7 +53,7 @@ jobs:
             cordova plugin add cordova-plugin-local-notification-12
           fi
 
-      - name: Process Code & Inject Magic
+      - name: Process Code & Inject Safe Magic 🚨
         env:
           USE_CAMERA: ${{ github.event.client_payload.use_camera }}
           USE_MIC: ${{ github.event.client_payload.use_mic }}
@@ -115,13 +113,14 @@ jobs:
           else:
               status_script = "StatusBar.overlaysWebView(false); StatusBar.backgroundColorByHexString('" + status_color + "'); StatusBar.styleLightContent();"
 
-          permission_script = """<script>document.addEventListener('deviceready', function() { if(StatusBar) { """ + status_script + """ } var permissions = cordova.plugins.permissions; var list = []; if (""" + cam_str + """) list.push(permissions.CAMERA); if (""" + mic_str + """) list.push(permissions.RECORD_AUDIO); if (""" + store_str + """) { list.push('android.permission.READ_MEDIA_IMAGES'); list.push('android.permission.READ_MEDIA_VIDEO'); list.push(permissions.WRITE_EXTERNAL_STORAGE); list.push(permissions.READ_EXTERNAL_STORAGE); } if (""" + notif_str + """) list.push('android.permission.POST_NOTIFICATIONS'); if (list.length > 0) permissions.requestPermissions(list, function(){}, function(){}); if (""" + notif_str + """) { setTimeout(function() { if (window.cordova && cordova.plugins && cordova.plugins.notification) { cordova.plugins.notification.local.requestPermission(function(granted) {}); } }, 1000); } }, false);</script>"""
+          permission_script = """<script>document.addEventListener('deviceready', function() { if(window.StatusBar) { """ + status_script + """ } var permissions = cordova.plugins.permissions; var list = []; if (""" + cam_str + """) list.push(permissions.CAMERA); if (""" + mic_str + """) list.push(permissions.RECORD_AUDIO); if (""" + store_str + """) { list.push('android.permission.READ_MEDIA_IMAGES'); list.push('android.permission.READ_MEDIA_VIDEO'); list.push(permissions.WRITE_EXTERNAL_STORAGE); list.push(permissions.READ_EXTERNAL_STORAGE); } if (""" + notif_str + """) list.push('android.permission.POST_NOTIFICATIONS'); if (list.length > 0) permissions.requestPermissions(list, function(){}, function(){}); if (""" + notif_str + """) { setTimeout(function() { if (window.cordova && cordova.plugins && cordova.plugins.notification) { cordova.plugins.notification.local.requestPermission(function(granted) {}); } }, 1000); } }, false);</script>"""
           
           if '</body>' in html_data:
               html_data = html_data.replace('</body>', permission_script + '\n</body>')
           else:
               html_data += permission_script
 
+          # 🚨 XTR ULTIMATE MILITARY GRADE SECURITY 🚨
           if use_security:
               encoded_url = urllib.parse.quote(html_data)
               secret_key = "XTR_ULTIMATE_MILITARY_SHIELD_2026_KEY"
@@ -130,119 +129,62 @@ jobs:
                   xored_bytes.append(ord(c) ^ ord(secret_key[i % len(secret_key)]))
               b64_payload = base64.b64encode(xored_bytes).decode('utf-8')
 
-              core_js = """(function(){ setInterval(function(){ Function("debugger")(); }, 50); var p = "B64_PAYLOAD_HERE"; var k = "SECRET_KEY_HERE"; function checkEnv() { var h = window.location.href || ''; var pr = window.location.protocol || ''; var hn = window.location.hostname || ''; var bad = ['/storage/emulated/', '/sdcard/', 'content://', '/data/user/']; for(var i=0; i<bad.length; i++) { if(h.indexOf(bad[i]) !== -1) return false; } if ((pr === 'https:' || pr === 'http:') && hn === 'localhost') return true; if (h.indexOf('file:///android_asset/') === 0) return true; return false; } function dec(d, key) { var s = atob(d); var r = ''; for(var i=0; i<s.length; i++) { r += String.fromCharCode(s.charCodeAt(i) ^ key.charCodeAt(i % key.length)); } return decodeURIComponent(r); } if (!checkEnv()) { document.getElementById('xtr-security-screen').style.display = 'flex'; setTimeout(function(){ while(true) { history.pushState(0, 0, ""); } }, 2000); } else { try { var cleanHtml = dec(p, k); document.open(); document.write(cleanHtml); document.close(); } catch(e) { document.getElementById('xtr-security-screen').style.display = 'flex'; } } })();""".replace("B64_PAYLOAD_HERE", b64_payload).replace("SECRET_KEY_HERE", secret_key)
+              core_js = """(function(){ setInterval(function(){ Function("debugger")(); }, 50); var p = "B64_PAYLOAD_HERE"; var k = "SECRET_KEY_HERE"; function checkEnv() { var h = window.location.href || ''; var pr = window.location.protocol || ''; var hn = window.location.hostname || ''; var bad = ['/storage/emulated/', '/sdcard/', 'content://', '/data/user/']; for(var i=0; i<bad.length; i++) { if(h.indexOf(bad[i]) !== -1) return false; } if ((pr === 'https:' || pr === 'http:') && hn === 'localhost') return true; if (h.indexOf('file:///android_asset/') === 0) return true; return false; } function dec(d, key) { var s = atob(d); var r = ''; for(var i=0; i<s.length; i++) { r += String.fromCharCode(s.charCodeAt(i) ^ key.charCodeAt(i % key.length)); } return decodeURIComponent(r); } if (!checkEnv()) { document.getElementById('xtr-security-screen').style.display = 'flex'; } else { try { var cleanHtml = dec(p, k); document.open(); document.write(cleanHtml); document.close(); } catch(e) { document.getElementById('xtr-security-screen').style.display = 'flex'; } } })();""".replace("B64_PAYLOAD_HERE", b64_payload).replace("SECRET_KEY_HERE", secret_key)
 
               js_array = ','.join(str(ord(c)) for c in core_js)
               bootstrapper = "<script>var _0x9a4b = [" + js_array + "];var _0x1c2d = '';for(var _0x=0; _0x<_0x9a4b.length; _0x++){_0x1c2d+=String.fromCharCode(_0x9a4b[_0x]);}Function(_0x1c2d)();</script>"
 
-              html_data = """<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"><title>Protected by XTR Security</title><style>* { margin: 0; padding: 0; box-sizing: border-box; font-family: monospace; } body, html { width: 100%; height: 100%; background: #000; color: #FFF; overflow: hidden; } #xtr-security-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle at center, #1A050A 0%, #000000 90%); display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; z-index: 2147483647; text-align: center; } .xtr-shield-icon { width: 80px; height: 80px; margin-bottom: 20px; filter: drop-shadow(0 0 15px rgba(255, 0, 60, 0.8)); animation: xtrPulse 1.5s infinite alternate; } @keyframes xtrPulse { 0% { transform: scale(1); filter: drop-shadow(0 0 15px rgba(255, 0, 60, 0.8)); } 100% { transform: scale(1.1); filter: drop-shadow(0 0 30px rgba(255, 0, 60, 1)); } } .xtr-title { color: #FF003C; font-size: 32px; font-weight: bold; text-transform: uppercase; margin-bottom: 10px; text-shadow: 0 0 20px #FF003C; } .xtr-badge { background: rgba(255, 0, 60, 0.2); border: 1px solid #FF003C; color: #FFF; padding: 5px 15px; font-size: 14px; border-radius: 5px; margin-bottom: 20px; } .xtr-details { color: #AAA; font-size: 12px; line-height: 1.5; max-width: 400px; }</style></head><body><div id="xtr-security-screen" style="display:none;"><svg class="xtr-shield-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L4 5V11.09C4 16.14 7.41 20.85 12 22C16.59 20.85 20 16.14 20 11.09V5L12 2Z" fill="#FF003C" fill-opacity="0.2" stroke="#FF003C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 8V12M12 16H12.01" stroke="#FF003C" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><h1 class="xtr-title">XTR SECURITY</h1><div class="xtr-badge">[ ILLEGAL ACCESS BLOCKED ]</div><p class="xtr-details">This application's source code is military-grade encrypted by Xtr Studio. Unauthorized copying, tampering, or external viewing triggers an infinite freeze loop.</p></div>""" + bootstrapper + """</body></html>"""
+              html_data = """<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Protected by XTR Security</title><style>*{margin:0;padding:0;box-sizing:border-box;font-family:monospace;}body,html{width:100%;height:100%;background:#000;color:#FFF;overflow:hidden;}#xtr-security-screen{position:fixed;top:0;left:0;width:100%;height:100%;background:radial-gradient(circle at center, #1A050A 0%, #000 90%);display:flex;flex-direction:column;justify-content:center;align-items:center;padding:20px;z-index:2147483647;text-align:center;}.xtr-title{color:#FF003C;font-size:32px;font-weight:bold;margin-bottom:10px;text-shadow:0 0 20px #FF003C;}.xtr-badge{background:rgba(255,0,60,0.2);border:1px solid #FF003C;padding:5px 15px;border-radius:5px;margin-bottom:20px;}</style></head><body><div id="xtr-security-screen" style="display:none;"><h1 class="xtr-title">XTR SECURITY</h1><div class="xtr-badge">[ ILLEGAL ACCESS BLOCKED ]</div></div>""" + bootstrapper + """</body></html>"""
 
           os.makedirs('xtrapp/www', exist_ok=True)
           with open('xtrapp/www/index.html', 'w', encoding='utf-8') as f:
               f.write(html_data)
 
           os.makedirs('xtrapp/res', exist_ok=True)
-          config = open('xtrapp/config.xml', 'r', encoding='utf-8').read()
-          config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
+          config_path = 'xtrapp/config.xml'
+          with open(config_path, 'r', encoding='utf-8') as f:
+              config = f.read()
 
+          config = config.replace('<widget ', '<widget xmlns:android="http://schemas.android.com/apk/res/android" ')
+
+          # 🚨 আইকন ও স্প্ল্যাশ সেভ করার সেফ মেথড
           if icon_b64 != 'null':
               try:
                   with open('xtrapp/res/icon.png', 'wb') as f:
                       f.write(decode_b64_safe(icon_b64))
                   config = config.replace('</widget>', '    <icon src="res/icon.png" />\n</widget>')
-              except Exception as e: pass
+              except Exception: pass
 
           if splash_b64 != 'null':
               try:
-                  with open('xtrapp/res/bg_splash.png', 'wb') as f:
+                  with open('xtrapp/res/splash.png', 'wb') as f:
                       f.write(decode_b64_safe(splash_b64))
-                  config = config.replace('</widget>', '    <resource-file src="res/bg_splash.png" target="app/src/main/res/drawable/bg_splash.png" />\n</widget>')
-              except Exception as e: pass
+                  splash_xml = '    <preference name="AndroidWindowSplashScreenAnimatedIcon" value="res/splash.png" />\n    <preference name="AndroidWindowSplashScreenBackground" value="#121212" />\n    <preference name="SplashScreenDelay" value="3000" />\n'
+                  config = config.replace('</widget>', splash_xml + '</widget>')
+              except Exception: pass
 
-          splash_prefs = "<preference name=\"SplashScreenDelay\" value=\"0\" />\n<preference name=\"FadeSplashScreenDuration\" value=\"0\" />\n<preference name=\"ShowSplashScreenSpinner\" value=\"false\" />\n<preference name=\"AndroidWindowSplashScreenBackground\" value=\"#121212\" />\n"
-          fullscreen_xml = '    <preference name="Fullscreen" value="true" />\n' if use_fullscreen else ''
-          timeout_fix = "<preference name=\"loadUrlTimeoutValue\" value=\"700000\" />\n<preference name=\"KeepRunning\" value=\"true\" />\n<preference name=\"ErrorUrl\" value=\"\" />\n" + fullscreen_xml + splash_prefs
-          
-          config = config.replace('</widget>', timeout_fix + '\n</widget>')
+          if use_fullscreen:
+              config = config.replace('</widget>', '    <preference name="Fullscreen" value="true" />\n</widget>')
 
           p_xml = '<platform name="android">\n'
           theme = "@style/Theme.AppCompat.NoActionBar" if use_fullscreen else "@style/Theme.AppCompat.Light.NoActionBar"
-          p_xml += f'  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="{theme}" android:usesCleartextTraffic="true" />\n  </edit-config>\n'
-          
-          if use_cam: p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.CAMERA" />\n  </config-file>\n'
-          if use_mic: p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n  </config-file>\n'
-          if use_storage: p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n  </config-file>\n'
-          if use_notif: p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n  </config-file>\n'
-          
+          p_xml += f'  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application"><application android:theme="{theme}" android:usesCleartextTraffic="true" /></edit-config>\n'
           p_xml += '</platform>'
+
           config = config.replace('</widget>', p_xml + '\n</widget>')
-          with open('xtrapp/config.xml', 'w', encoding='utf-8') as f:
+          with open(config_path, 'w', encoding='utf-8') as f:
               f.write(config)
-
-          native_splash_code = """
-          import android.os.Bundle;
-          import android.widget.ImageView;
-          import android.widget.RelativeLayout;
-          import android.os.Handler;
-          import android.os.Looper;
-          import android.view.View;
-          import org.apache.cordova.CordovaActivity;
-
-          public class MainActivity extends CordovaActivity {
-              @Override
-              public void onCreate(Bundle savedInstanceState) {
-                  super.onCreate(savedInstanceState);
-                  int resId = getResources().getIdentifier("bg_splash", "drawable", getPackageName());
-                  if (resId != 0) { getWindow().setBackgroundDrawableResource(resId); }
-                  RelativeLayout splashLayout = new RelativeLayout(this);
-                  splashLayout.setLayoutParams(new RelativeLayout.LayoutParams(-1, -1));
-                  splashLayout.setBackgroundColor(android.graphics.Color.parseColor("#121212"));
-                  ImageView splashImage = new ImageView(this);
-                  splashImage.setLayoutParams(new RelativeLayout.LayoutParams(-1, -1));
-                  splashImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                  if (resId != 0) {
-                      splashImage.setImageResource(resId);
-                      splashLayout.addView(splashImage);
-                      addContentView(splashLayout, new RelativeLayout.LayoutParams(-1, -1));
-                      new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
-                          @Override
-                          public void run() {
-                              splashLayout.animate().alpha(0.0f).setDuration(400).withEndAction(new Runnable() {
-                                  @Override
-                                  public void run() { splashLayout.setVisibility(View.GONE); }
-                              });
-                          }
-                      }, 2500);
-                  }
-                  Bundle extras = getIntent().getExtras();
-                  if (extras != null && extras.getBoolean("cdvStartInBackground", false)) {
-                      moveTaskToBack(true);
-                  }
-                  loadUrl(launchUrl);
-              }
-          }
-          """
-          
-          app_pkg = os.environ.get('APP_PKG', 'com.app').replace('"', '').replace("'", "").strip()
-          if '.' not in app_pkg: app_pkg = 'com.xtrweb.' + app_pkg
-          java_path = f"xtrapp/platforms/android/app/src/main/java/{app_pkg.replace('.', '/')}/MainActivity.java"
-          try:
-              if os.path.exists(java_path):
-                  java_content = open(java_path, 'r', encoding='utf-8').read()
-                  java_content = re.sub(r'public class MainActivity extends CordovaActivity \{.*\}', native_splash_code, java_content, flags=re.DOTALL)
-                  with open(java_path, 'w', encoding='utf-8') as f:
-                      f.write(java_content)
-          except Exception as e: pass
           EOF
           
           python3 process_app.py
 
-      - name: Compile and Build APK
+      - name: Build APK without Daemon (Zero Hang Fix) 🚨
         run: |
           cd xtrapp
-          export GRADLE_OPTS="-Dorg.gradle.daemon=false"
-          # 🚨 ম্যাজিক: কোনো হ্যাংিং ছাড়াই ফাস্ট বিল্ড
-          cordova build android --debug -- --no-daemon
+          mkdir -p platforms/android
+          echo "org.gradle.daemon=false" >> platforms/android/gradle.properties
+          echo "org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8" >> platforms/android/gradle.properties
+          cordova build android --debug
 
       - name: Release Final APK
         env:
@@ -253,9 +195,3 @@ jobs:
           gh release delete "$SAFE_NAME" --yes || true
           git push --delete origin "$SAFE_NAME" || true
           gh release create "$SAFE_NAME" xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "$SAFE_NAME" -n "Latest Build"
-
-      - name: Force Clean Up (Fix "Complete Job" Hang) 🚨
-        run: |
-          pkill -f java || true
-          pkill -f node || true
-          pkill -f gradle || true

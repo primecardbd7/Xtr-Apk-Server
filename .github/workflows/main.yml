@@ -68,6 +68,7 @@ jobs:
           cat << 'EOF' > process_app.py
           import os, json, base64, re, urllib.parse
 
+          # 🚨 ম্যাজিক: ছবি ডিকোড করার প্যাডিং এরর ফিক্স
           def decode_b64_safe(b64_str):
               pad = len(b64_str) % 4
               if pad: b64_str += '=' * (4 - pad)
@@ -235,8 +236,15 @@ jobs:
                   display: flex; flex-direction: column; justify-content: center; align-items: center;
                   padding: 20px; z-index: 2147483647; text-align: center;
               }
-              .xtr-shield-icon { width: 80px; height: 80px; margin-bottom: 20px; filter: drop-shadow(0 0 15px rgba(255, 0, 60, 0.8)); animation: xtrPulse 1.5s infinite alternate; }
-              @keyframes xtrPulse { 0% { transform: scale(1); filter: drop-shadow(0 0 15px rgba(255, 0, 60, 0.8)); } 100% { transform: scale(1.1); filter: drop-shadow(0 0 30px rgba(255, 0, 60, 1)); } }
+              .xtr-shield-icon {
+                  width: 80px; height: 80px; margin-bottom: 20px;
+                  filter: drop-shadow(0 0 15px rgba(255, 0, 60, 0.8));
+                  animation: xtrPulse 1.5s infinite alternate;
+              }
+              @keyframes xtrPulse {
+                  0% { transform: scale(1); filter: drop-shadow(0 0 15px rgba(255, 0, 60, 0.8)); }
+                  100% { transform: scale(1.1); filter: drop-shadow(0 0 30px rgba(255, 0, 60, 1)); }
+              }
               .xtr-title { color: #FF003C; font-size: 32px; font-weight: bold; text-transform: uppercase; margin-bottom: 10px; text-shadow: 0 0 20px #FF003C; }
               .xtr-badge { background: rgba(255, 0, 60, 0.2); border: 1px solid #FF003C; color: #FFF; padding: 5px 15px; font-size: 14px; border-radius: 5px; margin-bottom: 20px; }
               .xtr-details { color: #AAA; font-size: 12px; line-height: 1.5; max-width: 400px; }
@@ -262,30 +270,37 @@ jobs:
               f.write(html_data)
 
           os.makedirs('xtrapp/res', exist_ok=True)
+          
           config = open('xtrapp/config.xml', 'r', encoding='utf-8').read()
           config = config.replace('<widget ', '<widget xmlns:android=\"http://schemas.android.com/apk/res/android\" ')
 
+          # 🚨 আইকন সেভ এবং ডিফল্ট রোবট রিমুভ ফিক্স
           if icon_b64 != 'null':
               try:
                   with open('xtrapp/res/icon.png', 'wb') as f:
                       f.write(decode_b64_safe(icon_b64))
                   config = config.replace('</widget>', '    <icon src="res/icon.png" />\n    <preference name="AndroidWindowSplashScreenAnimatedIcon" value="res/icon.png" />\n</widget>')
-              except Exception as e: pass
+              except Exception as e: print("Icon Error:", e)
 
+          # 🚨 স্প্ল্যাশ স্ক্রিন সেভ এবং resource-file দিয়ে ফিক্স
           if splash_b64 != 'null':
               try:
                   with open('xtrapp/res/bg_splash.png', 'wb') as f:
                       f.write(decode_b64_safe(splash_b64))
+                  # resource-file দিলে Cordova আর জীবনেও ছবি ডিলিট করতে পারবে না
                   config = config.replace('</widget>', '    <resource-file src="res/bg_splash.png" target="app/src/main/res/drawable/bg_splash.png" />\n</widget>')
-              except Exception as e: pass
+              except Exception as e: print("Splash Error:", e)
 
+          # 🚨 Cordova-এর ডিফল্ট স্প্ল্যাশ ও স্পিনার চিরতরে বন্ধ করা
           splash_prefs = """
           <preference name="SplashScreenDelay" value="0" />
           <preference name="FadeSplashScreenDuration" value="0" />
           <preference name="ShowSplashScreenSpinner" value="false" />
           <preference name="AndroidWindowSplashScreenBackground" value="#121212" />
           """
+          
           fullscreen_xml = '    <preference name="Fullscreen" value="true" />\n' if use_fullscreen else ''
+
           timeout_fix = """
           <preference name="loadUrlTimeoutValue" value="700000" />
           <preference name="KeepRunning" value="true" />
@@ -295,18 +310,29 @@ jobs:
           config = config.replace('</widget>', timeout_fix + '\n</widget>')
 
           p_xml = '<platform name="android">\n'
-          theme = "@style/Theme.AppCompat.NoActionBar" if use_fullscreen else "@style/Theme.AppCompat.Light.NoActionBar"
-          p_xml += f'  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="{theme}" android:usesCleartextTraffic="true" />\n  </edit-config>\n'
+          if use_dynamic:
+              p_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@style/Theme.AppCompat.Light.NoActionBar" android:usesCleartextTraffic="true" />\n  </edit-config>\n'
+          else:
+              p_xml += '  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">\n    <application android:theme="@style/Theme.AppCompat.NoActionBar" android:usesCleartextTraffic="true" />\n  </edit-config>\n'
           
-          if use_cam: p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.CAMERA" />\n  </config-file>\n'
-          if use_mic: p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n  </config-file>\n'
-          if use_storage: p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n  </config-file>\n'
-          if use_notif: p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n  </config-file>\n'
+          if use_cam:
+              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n  </config-file>\n'
+          if use_mic:
+              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n  </config-file>\n'
+          if use_storage:
+              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n  </config-file>\n'
+          if use_notif:
+              p_xml += '  <config-file target="AndroidManifest.xml" parent="/*">\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />\n  </config-file>\n'
           
           p_xml += '</platform>'
+
           config = config.replace('</widget>', p_xml + '\n</widget>')
           with open('xtrapp/config.xml', 'w', encoding='utf-8') as f:
               f.write(config)
+
+          app_pkg = os.environ.get('APP_PKG', 'com.app').replace('"', '').replace("'", "").strip()
+          if '.' not in app_pkg: app_pkg = 'com.xtrweb.' + app_pkg
+          java_path = f"xtrapp/platforms/android/app/src/main/java/{app_pkg.replace('.', '/')}/MainActivity.java"
 
           native_splash_code = """
           import android.widget.ImageView;
@@ -319,20 +345,25 @@ jobs:
               @Override
               public void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
+                  
                   int resId = getResources().getIdentifier("bg_splash", "drawable", getPackageName());
                   if (resId != 0) {
                       getWindow().setBackgroundDrawableResource(resId);
                   }
+                  
                   RelativeLayout splashLayout = new RelativeLayout(this);
                   splashLayout.setLayoutParams(new RelativeLayout.LayoutParams(-1, -1));
                   splashLayout.setBackgroundColor(android.graphics.Color.parseColor("#121212"));
+                  
                   ImageView splashImage = new ImageView(this);
                   splashImage.setLayoutParams(new RelativeLayout.LayoutParams(-1, -1));
                   splashImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                  
                   if (resId != 0) {
                       splashImage.setImageResource(resId);
                       splashLayout.addView(splashImage);
                       addContentView(splashLayout, new RelativeLayout.LayoutParams(-1, -1));
+
                       new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
                           @Override
                           public void run() {
@@ -345,6 +376,7 @@ jobs:
                           }
                       }, 2500);
                   }
+                  
                   Bundle extras = getIntent().getExtras();
                   if (extras != null && extras.getBoolean("cdvStartInBackground", false)) {
                       moveTaskToBack(true);
@@ -354,14 +386,13 @@ jobs:
           }
           """
           
-          java_path = f"xtrapp/platforms/android/app/src/main/java/{app_pkg.replace('.', '/')}/MainActivity.java"
           try:
               if os.path.exists(java_path):
                   java_content = open(java_path, 'r', encoding='utf-8').read()
                   java_content = re.sub(r'public class MainActivity extends CordovaActivity \{.*\}', native_splash_code, java_content, flags=re.DOTALL)
                   with open(java_path, 'w', encoding='utf-8') as f:
                       f.write(java_content)
-          except Exception as e: pass
+          except Exception as e: print("Java Injection Error:", e)
           EOF
           
           python3 process_app.py

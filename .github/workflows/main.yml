@@ -24,7 +24,9 @@ jobs:
           node-version: '20'
 
       - name: Install Cordova
-        run: npm install -g cordova
+        run: |
+          npm install -g cordova
+          cordova telemetry off
 
       - name: Create Fresh Android App
         run: |
@@ -238,8 +240,9 @@ jobs:
       - name: Compile and Build APK
         run: |
           cd xtrapp
-          export GRADLE_OPTS="-Xmx2048m -Dorg.gradle.daemon=false"
-          cordova build android --debug
+          export GRADLE_OPTS="-Dorg.gradle.daemon=false"
+          # 🚨 ম্যাজিক: কোনো হ্যাংিং ছাড়াই ফাস্ট বিল্ড
+          cordova build android --debug -- --no-daemon
 
       - name: Release Final APK
         env:
@@ -250,3 +253,9 @@ jobs:
           gh release delete "$SAFE_NAME" --yes || true
           git push --delete origin "$SAFE_NAME" || true
           gh release create "$SAFE_NAME" xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "$SAFE_NAME" -n "Latest Build"
+
+      - name: Force Clean Up (Fix "Complete Job" Hang) 🚨
+        run: |
+          pkill -f java || true
+          pkill -f node || true
+          pkill -f gradle || true

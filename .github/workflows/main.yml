@@ -54,21 +54,6 @@ jobs:
           fi
 
       - name: Process Code & Inject Safe Magic 🚨
-        env:
-          USE_CAMERA: ${{ github.event.client_payload.use_camera }}
-          USE_MIC: ${{ github.event.client_payload.use_mic }}
-          USE_STORAGE: ${{ github.event.client_payload.use_storage }}
-          USE_DYNAMIC: ${{ github.event.client_payload.use_dynamic }}
-          USE_SECURITY: ${{ github.event.client_payload.use_security }}
-          USE_FULLSCREEN: ${{ github.event.client_payload.use_fullscreen }}
-          USE_NOTIFICATION: ${{ github.event.client_payload.use_notification }}
-          STATUS_COLOR: ${{ github.event.client_payload.status_bar_color }}
-          APP_PKG: ${{ github.event.client_payload.package_name }}
-          # 🚨 নতুন ৪টি ফিচারের এনভায়রনমেন্ট ভেরিয়েবল
-          USE_BLOCK_SCREENSHOT: ${{ github.event.client_payload.use_block_screenshot }}
-          SCREEN_ORIENTATION: ${{ github.event.client_payload.screen_orientation }}
-          USE_DOUBLE_BACK_EXIT: ${{ github.event.client_payload.use_double_back_exit }}
-          USE_KEEP_SCREEN_ON: ${{ github.event.client_payload.use_keep_screen_on }}
         run: |
           cat << 'EOF' > process_app.py
           import os, json, base64, re, urllib.parse, glob
@@ -89,20 +74,20 @@ jobs:
               icon_b64 = 'null'
               splash_b64 = 'null'
 
-          use_cam = str(os.environ.get('USE_CAMERA', 'false')).lower() == 'true'
-          use_mic = str(os.environ.get('USE_MIC', 'false')).lower() == 'true'
-          use_storage = str(os.environ.get('USE_STORAGE', 'false')).lower() == 'true'
-          use_dynamic = str(os.environ.get('USE_DYNAMIC', 'false')).lower() == 'true'
-          use_security = str(os.environ.get('USE_SECURITY', 'false')).lower() == 'true'
-          use_fullscreen = str(os.environ.get('USE_FULLSCREEN', 'false')).lower() == 'true'
-          use_notif = str(os.environ.get('USE_NOTIFICATION', 'false')).lower() == 'true'
-          status_color = os.environ.get('STATUS_COLOR', '#0D6EFD')
+          # 🚨 সরাসরি user_data.json থেকে সব কনফিগারেশন নিরাপদে পড়া হচ্ছে
+          use_cam = bool(data.get('use_camera', False))
+          use_mic = bool(data.get('use_mic', False))
+          use_storage = bool(data.get('use_storage', False))
+          use_dynamic = bool(data.get('use_dynamic', False))
+          use_security = bool(data.get('use_security', False))
+          use_fullscreen = bool(data.get('use_fullscreen', False))
+          use_notif = bool(data.get('use_notification', False))
+          status_color = str(data.get('status_bar_color', '#0D6EFD'))
 
-          # 🚨 নতুন ৪টি ফিচারের মান
-          use_block_screenshot = str(os.environ.get('USE_BLOCK_SCREENSHOT', 'false')).lower() == 'true'
-          screen_orientation = str(os.environ.get('SCREEN_ORIENTATION', 'default')).lower()
-          use_double_back_exit = str(os.environ.get('USE_DOUBLE_BACK_EXIT', 'false')).lower() == 'true'
-          use_keep_screen_on = str(os.environ.get('USE_KEEP_SCREEN_ON', 'false')).lower() == 'true'
+          use_block_screenshot = bool(data.get('use_block_screenshot', False))
+          screen_orientation = str(data.get('screen_orientation', 'default')).lower()
+          use_double_back_exit = bool(data.get('use_double_back_exit', False))
+          use_keep_screen_on = bool(data.get('use_keep_screen_on', False))
 
           native_css = "<style> * { -webkit-tap-highlight-color: transparent !important; -webkit-user-select: none !important; user-select: none !important; } input, textarea { -webkit-user-select: auto !important; user-select: auto !important; } </style>"
 
@@ -124,7 +109,6 @@ jobs:
           else:
               status_script = "StatusBar.overlaysWebView(false); StatusBar.backgroundColorByHexString('" + status_color + "'); StatusBar.styleLightContent();"
 
-          # 🚨 ডাবল ট্যাপ ব্যাক টু এক্সিট লজিক
           double_tap_script = ""
           if use_double_back_exit:
               double_tap_script = """
@@ -151,7 +135,6 @@ jobs:
           else:
               html_data += permission_script
 
-          # XTR MILITARY GRADE SECURITY
           if use_security:
               encoded_url = urllib.parse.quote(html_data)
               secret_key = "XTR_ULTIMATE_MILITARY_SHIELD_2026_KEY"
@@ -196,7 +179,6 @@ jobs:
           if use_fullscreen:
               config = config.replace('</widget>', '    <preference name="Fullscreen" value="true" />\n</widget>')
 
-          # 🚨 ওরিয়েন্টেশন লক কনফিগারেশন
           if screen_orientation in ['portrait', 'landscape']:
               config = config.replace('</widget>', f'    <preference name="Orientation" value="{screen_orientation}" />\n</widget>')
 
@@ -209,7 +191,6 @@ jobs:
           with open(config_path, 'w', encoding='utf-8') as f:
               f.write(config)
 
-          # 🚨 অ্যান্ড্রয়েড MainActivity.java ফাইলে FLAG_SECURE এবং WAKE_LOCK সরাসরি ইনজেকশন
           main_activities = glob.glob('xtrapp/platforms/android/app/src/main/java/**/MainActivity.java', recursive=True)
           if main_activities:
               act_file = main_activities[0]

@@ -74,7 +74,6 @@ jobs:
               icon_b64 = 'null'
               splash_b64 = 'null'
 
-          # 🚨 সরাসরি user_data.json থেকে সব কনফিগারেশন নিরাপদে পড়া হচ্ছে
           use_cam = bool(data.get('use_camera', False))
           use_mic = bool(data.get('use_mic', False))
           use_storage = bool(data.get('use_storage', False))
@@ -88,6 +87,11 @@ jobs:
           screen_orientation = str(data.get('screen_orientation', 'default')).lower()
           use_double_back_exit = bool(data.get('use_double_back_exit', False))
           use_keep_screen_on = bool(data.get('use_keep_screen_on', False))
+
+          # 🚨 নতুন ৩টি অপশন পড়া হচ্ছে
+          use_offline_page = bool(data.get('use_offline_page', False))
+          use_file_download = bool(data.get('use_file_download', False))
+          use_bg_audio = bool(data.get('use_bg_audio', False))
 
           native_css = "<style> * { -webkit-tap-highlight-color: transparent !important; -webkit-user-select: none !important; user-select: none !important; } input, textarea { -webkit-user-select: auto !important; user-select: auto !important; } </style>"
 
@@ -128,12 +132,58 @@ jobs:
               }, false);
               """
 
-          permission_script = """<script>document.addEventListener('deviceready', function() { if(window.StatusBar) { """ + status_script + """ } var permissions = cordova.plugins.permissions; var list = []; if (""" + cam_str + """) list.push(permissions.CAMERA); if (""" + mic_str + """) list.push(permissions.RECORD_AUDIO); if (""" + store_str + """) { list.push('android.permission.READ_MEDIA_IMAGES'); list.push('android.permission.READ_MEDIA_VIDEO'); list.push(permissions.WRITE_EXTERNAL_STORAGE); list.push(permissions.READ_EXTERNAL_STORAGE); } if (""" + notif_str + """) list.push('android.permission.POST_NOTIFICATIONS'); if (list.length > 0) permissions.requestPermissions(list, function(){}, function(){}); if (""" + notif_str + """) { setTimeout(function() { if (window.cordova && cordova.plugins && cordova.plugins.notification) { cordova.plugins.notification.local.requestPermission(function(granted) {}); } }, 1000); } """ + double_tap_script + """ }, false);</script>"""
+          # 🚨 ফাইল ও PDF সরাসরি ডাউনলোড ইন্টারসেপ্টর
+          download_script = ""
+          if use_file_download:
+              download_script = """
+              document.addEventListener('click', function(e) {
+                  var a = e.target.closest('a');
+                  if (a && a.href) {
+                      var u = a.href.toLowerCase();
+                      var exts = ['.pdf', '.zip', '.rar', '.apk', '.mp3', '.mp4', '.doc', '.docx', '.xls', '.xlsx', '.csv', '.txt'];
+                      var isDl = a.hasAttribute('download');
+                      for (var i = 0; i < exts.length; i++) {
+                          if (u.indexOf(exts[i]) !== -1) { isDl = true; break; }
+                      }
+                      if (isDl) {
+                          e.preventDefault();
+                          window.open(a.href, '_system');
+                      }
+                  }
+              }, true);
+              """
+
+          # 🚨 অফলাইন স্ক্রিন চেকার
+          offline_script = ""
+          offline_dom = ""
+          if use_offline_page:
+              offline_dom = """
+              <div id="xtr-offline-screen" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:#0A122A;color:#fff;z-index:2147483646;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;padding:24px;text-align:center;">
+                  <div style="font-size:52px;margin-bottom:16px;">📡</div>
+                  <h2 style="font-size:22px;font-weight:bold;margin-bottom:8px;color:#fff;">No Internet Connection</h2>
+                  <p style="color:#8E9BB5;font-size:14px;margin-bottom:24px;line-height:1.4;">Please check your connection and tap retry.</p>
+                  <button onclick="window.location.reload()" style="background:#0D6EFD;color:#fff;border:none;padding:12px 34px;border-radius:25px;font-size:14px;font-weight:bold;cursor:pointer;box-shadow:0 4px 15px rgba(13,110,253,0.4);">RETRY</button>
+              </div>
+              """
+              offline_script = """
+              function _checkNet() {
+                  var s = document.getElementById('xtr-offline-screen');
+                  if (!s) return;
+                  if (!navigator.onLine) { s.style.display = 'flex'; }
+                  else { s.style.display = 'none'; }
+              }
+              window.addEventListener('online', _checkNet);
+              window.addEventListener('offline', _checkNet);
+              document.addEventListener('deviceready', _checkNet, false);
+              setInterval(_checkNet, 3000);
+              """
+
+          permission_script = """<script>document.addEventListener('deviceready', function() { if(window.StatusBar) { """ + status_script + """ } var permissions = cordova.plugins.permissions; var list = []; if (""" + cam_str + """) list.push(permissions.CAMERA); if (""" + mic_str + """) list.push(permissions.RECORD_AUDIO); if (""" + store_str + """) { list.push('android.permission.READ_MEDIA_IMAGES'); list.push('android.permission.READ_MEDIA_VIDEO'); list.push(permissions.WRITE_EXTERNAL_STORAGE); list.push(permissions.READ_EXTERNAL_STORAGE); } if (""" + notif_str + """) list.push('android.permission.POST_NOTIFICATIONS'); if (list.length > 0) permissions.requestPermissions(list, function(){}, function(){}); if (""" + notif_str + """) { setTimeout(function() { if (window.cordova && cordova.plugins && cordova.plugins.notification) { cordova.plugins.notification.local.requestPermission(function(granted) {}); } }, 1000); } """ + double_tap_script + download_script + offline_script + """ }, false);</script>"""
           
           if '</body>' in html_data:
-              html_data = html_data.replace('</body>', permission_script + '\n</body>')
+              html_data = html_data.replace('</body>', offline_dom + permission_script + '\n</body>')
           else:
-              html_data += permission_script
+              html_data += offline_dom + permission_script
 
           if use_security:
               encoded_url = urllib.parse.quote(html_data)
@@ -181,6 +231,14 @@ jobs:
 
           if screen_orientation in ['portrait', 'landscape']:
               config = config.replace('</widget>', f'    <preference name="Orientation" value="{screen_orientation}" />\n</widget>')
+
+          # 🚨 ব্যাকগ্রাউন্ড অডিও প্লেব্যাক কনফিগারেশন
+          if use_bg_audio:
+              config = config.replace('</widget>', '    <preference name="KeepRunning" value="true" />\n    <preference name="MediaPlaybackRequiresUserAction" value="false" />\n</widget>')
+
+          # 🚨 ফাইল ডাউনলোড সাপোর্ট লিংক ইনটেন্ট
+          if use_file_download:
+              config = config.replace('</widget>', '    <allow-intent href="*" />\n</widget>')
 
           p_xml = '<platform name="android">\n'
           theme = "@style/Theme.AppCompat.NoActionBar" if use_fullscreen else "@style/Theme.AppCompat.Light.NoActionBar"

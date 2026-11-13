@@ -44,13 +44,17 @@ jobs:
           cordova plugin add cordova-plugin-file-transfer
           cordova plugin add cordova-plugin-statusbar
 
-      - name: Install Notification Plugin
+      - name: Install Notification & Location Plugins
         env:
           USE_NOTIFICATION: ${{ github.event.client_payload.use_notification }}
         run: |
+          USE_LOC=$(python3 -c "import json; d=json.load(open('user_data.json')); print('true' if d.get('use_location') else 'false')" || echo "false")
+          cd xtrapp
           if [ "$USE_NOTIFICATION" = "true" ]; then
-            cd xtrapp
             cordova plugin add cordova-plugin-local-notification-12
+          fi
+          if [ "$USE_LOC" = "true" ]; then
+            cordova plugin add cordova-plugin-geolocation --variable GPS_REQUIRED="false"
           fi
 
       - name: Process Code & Inject Safe Magic 🚨
@@ -70,13 +74,20 @@ jobs:
               icon_b64 = data.get('icon', 'null').replace('\n', '').strip()
               splash_b64 = data.get('splash', 'null').replace('\n', '').strip()
           except Exception:
+              data = {}
               html_data = '<h1>JSON Data Error!</h1>'
               icon_b64 = 'null'
               splash_b64 = 'null'
 
+          ver_name = re.sub(r'["\'<>&\s]', '', str(data.get('version_name', '1.0.0'))) or '1.0.0'
+          ver_code = re.sub(r'[^0-9]', '', str(data.get('version_code', '1'))) or '1'
+          if int(ver_code) < 1:
+              ver_code = '1'
+
           use_cam = bool(data.get('use_camera', False))
           use_mic = bool(data.get('use_mic', False))
           use_storage = bool(data.get('use_storage', False))
+          use_loc = bool(data.get('use_location', False))
           use_dynamic = bool(data.get('use_dynamic', False))
           use_security = bool(data.get('use_security', False))
           use_fullscreen = bool(data.get('use_fullscreen', False))
@@ -86,9 +97,9 @@ jobs:
           use_block_screenshot = bool(data.get('use_block_screenshot', False))
           screen_orientation = str(data.get('screen_orientation', 'default')).lower()
           use_double_back_exit = bool(data.get('use_double_back_exit', False))
+          use_back_nav = bool(data.get('use_back_nav', False))
           use_keep_screen_on = bool(data.get('use_keep_screen_on', False))
 
-          # 🚨 নতুন ৩টি অপশন পড়া হচ্ছে
           use_offline_page = bool(data.get('use_offline_page', False))
           use_file_download = bool(data.get('use_file_download', False))
           use_bg_audio = bool(data.get('use_bg_audio', False))
@@ -106,6 +117,7 @@ jobs:
           cam_str = 'true' if use_cam else 'false'
           mic_str = 'true' if use_mic else 'false'
           store_str = 'true' if use_storage else 'false'
+          loc_str = 'true' if use_loc else 'false'
           notif_str = 'true' if use_notif else 'false'
 
           if use_dynamic:
@@ -113,9 +125,68 @@ jobs:
           else:
               status_script = "StatusBar.overlaysWebView(false); StatusBar.backgroundColorByHexString('" + status_color + "'); StatusBar.styleLightContent();"
 
-          double_tap_script = ""
-          if use_double_back_exit:
-              double_tap_script = """
+          # 🚨 হার্ডওয়্যার ব্যাক বাটন নেভিগেশন ও ডাবল ট্যাপ এক্সিট স্মার্ট কম্বো
+          back_script = ""
+          if use_back_nav and use_double_back_exit:
+              back_script = """
+              var _lastBackPress = 0;
+              var _wentBack = false;
+              var _backChecking = false;
+              function _markWentBack() { _wentBack = true; }
+              window.addEventListener('popstate', _markWentBack);
+              window.addEventListener('hashchange', _markWentBack);
+              window.addEventListener('pagehide', _markWentBack);
+              window.addEventListener('beforeunload', _markWentBack);
+              function _showExitToast() {
+                  var now = new Date().getTime();
+                  if (now - _lastBackPress < 2000) {
+                      navigator.app.exitApp();
+                  } else {
+                      _lastBackPress = now;
+                      var t = document.createElement("div");
+                      t.innerText = "Press back again to exit";
+                      t.style.cssText = "position:fixed;bottom:50px;left:50%;transform:translateX(-50%);background:rgba(20,20,30,0.9);color:#fff;padding:10px 22px;border-radius:25px;font-size:14px;font-weight:bold;z-index:2147483647;font-family:sans-serif;box-shadow:0 4px 15px rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.15);pointer-events:none;";
+                      document.body.appendChild(t);
+                      setTimeout(function(){ if(t) t.remove(); }, 2000);
+                  }
+              }
+              document.addEventListener('backbutton', function(e) {
+                  if (_backChecking) return;
+                  _backChecking = true;
+                  _wentBack = false;
+                  window.history.back();
+                  setTimeout(function() {
+                      _backChecking = false;
+                      if (!_wentBack) {
+                          _showExitToast();
+                      }
+                  }, 120);
+              }, false);
+              """
+          elif use_back_nav:
+              back_script = """
+              var _wentBack = false;
+              var _backChecking = false;
+              function _markWentBack() { _wentBack = true; }
+              window.addEventListener('popstate', _markWentBack);
+              window.addEventListener('hashchange', _markWentBack);
+              window.addEventListener('pagehide', _markWentBack);
+              window.addEventListener('beforeunload', _markWentBack);
+              document.addEventListener('backbutton', function(e) {
+                  if (_backChecking) return;
+                  _backChecking = true;
+                  _wentBack = false;
+                  window.history.back();
+                  setTimeout(function() {
+                      _backChecking = false;
+                      if (!_wentBack) {
+                          navigator.app.exitApp();
+                      }
+                  }, 120);
+              }, false);
+              """
+          elif use_double_back_exit:
+              back_script = """
               var _lastBackPress = 0;
               document.addEventListener('backbutton', function(e) {
                   var now = new Date().getTime();
@@ -132,7 +203,7 @@ jobs:
               }, false);
               """
 
-          # 🚨 ফাইল ও PDF সরাসরি ডাউনলোড ইন্টারসেপ্টর
+          # ফাইল ও PDF সরাসরি ডাউনলোড ইন্টারসেপ্টর
           download_script = ""
           if use_file_download:
               download_script = """
@@ -153,7 +224,7 @@ jobs:
               }, true);
               """
 
-          # 🚨 অফলাইন স্ক্রিন চেকার
+          # অফলাইন স্ক্রিন চেকার
           offline_script = ""
           offline_dom = ""
           if use_offline_page:
@@ -178,7 +249,7 @@ jobs:
               setInterval(_checkNet, 3000);
               """
 
-          permission_script = """<script>document.addEventListener('deviceready', function() { if(window.StatusBar) { """ + status_script + """ } var permissions = cordova.plugins.permissions; var list = []; if (""" + cam_str + """) list.push(permissions.CAMERA); if (""" + mic_str + """) list.push(permissions.RECORD_AUDIO); if (""" + store_str + """) { list.push('android.permission.READ_MEDIA_IMAGES'); list.push('android.permission.READ_MEDIA_VIDEO'); list.push(permissions.WRITE_EXTERNAL_STORAGE); list.push(permissions.READ_EXTERNAL_STORAGE); } if (""" + notif_str + """) list.push('android.permission.POST_NOTIFICATIONS'); if (list.length > 0) permissions.requestPermissions(list, function(){}, function(){}); if (""" + notif_str + """) { setTimeout(function() { if (window.cordova && cordova.plugins && cordova.plugins.notification) { cordova.plugins.notification.local.requestPermission(function(granted) {}); } }, 1000); } """ + double_tap_script + download_script + offline_script + """ }, false);</script>"""
+          permission_script = """<script>document.addEventListener('deviceready', function() { if(window.StatusBar) { """ + status_script + """ } var permissions = cordova.plugins.permissions; var list = []; if (""" + cam_str + """) list.push(permissions.CAMERA); if (""" + mic_str + """) list.push(permissions.RECORD_AUDIO); if (""" + store_str + """) { list.push('android.permission.READ_MEDIA_IMAGES'); list.push('android.permission.READ_MEDIA_VIDEO'); list.push(permissions.WRITE_EXTERNAL_STORAGE); list.push(permissions.READ_EXTERNAL_STORAGE); } if (""" + loc_str + """) { list.push(permissions.ACCESS_FINE_LOCATION); list.push(permissions.ACCESS_COARSE_LOCATION); } if (""" + notif_str + """) list.push('android.permission.POST_NOTIFICATIONS'); if (list.length > 0) permissions.requestPermissions(list, function(){}, function(){}); if (""" + notif_str + """) { setTimeout(function() { if (window.cordova && cordova.plugins && cordova.plugins.notification) { cordova.plugins.notification.local.requestPermission(function(granted) {}); } }, 1000); } """ + back_script + download_script + offline_script + """ }, false);</script>"""
           
           if '</body>' in html_data:
               html_data = html_data.replace('</body>', offline_dom + permission_script + '\n</body>')
@@ -211,6 +282,13 @@ jobs:
 
           config = config.replace('<widget ', '<widget xmlns:android="http://schemas.android.com/apk/res/android" ')
 
+          # 🚨 App Version Name ও Android Version Code সেট করা হচ্ছে
+          config = re.sub(r'(<widget\b[^>]*?\bversion=")[^"]*(")', rf'\g<1>{ver_name}\g<2>', config, count=1)
+          if 'android-versionCode=' in config:
+              config = re.sub(r'(<widget\b[^>]*?\bandroid-versionCode=")[^"]*(")', rf'\g<1>{ver_code}\g<2>', config, count=1)
+          else:
+              config = config.replace('<widget ', f'<widget android-versionCode="{ver_code}" ', 1)
+
           if icon_b64 != 'null':
               try:
                   with open('xtrapp/res/icon.png', 'wb') as f:
@@ -232,11 +310,9 @@ jobs:
           if screen_orientation in ['portrait', 'landscape']:
               config = config.replace('</widget>', f'    <preference name="Orientation" value="{screen_orientation}" />\n</widget>')
 
-          # 🚨 ব্যাকগ্রাউন্ড অডিও প্লেব্যাক কনফিগারেশন
           if use_bg_audio:
               config = config.replace('</widget>', '    <preference name="KeepRunning" value="true" />\n    <preference name="MediaPlaybackRequiresUserAction" value="false" />\n</widget>')
 
-          # 🚨 ফাইল ডাউনলোড সাপোর্ট লিংক ইনটেন্ট
           if use_file_download:
               config = config.replace('</widget>', '    <allow-intent href="*" />\n</widget>')
 

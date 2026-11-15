@@ -23,7 +23,6 @@ jobs:
         with:
           node-version: '20'
 
-      # 🚨 সুপার-ফাস্ট স্পিড: প্রথম বিল্ডের পর থেকে Gradle ও NPM ক্যাশ থাকবে!
       - name: Cache Gradle & NPM
         uses: actions/cache@v4
         with:
@@ -31,12 +30,12 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
             ~/.npm
-          key: xtr-apk-builder-v2-${{ runner.os }}
+          key: xtr-apk-builder-v3-${{ runner.os }}
           restore-keys: |
-            xtr-apk-builder-v2-
+            xtr-apk-builder-v3-
 
       - name: Install Cordova
-        run: npm install -g cordova --prefer-offline --no-audit --no-fund
+        run: npm install -g cordova
 
       - name: Create Fresh Android App
         run: |
@@ -51,19 +50,18 @@ jobs:
           cordova create xtrapp "$PKG" "$APP"
           cd xtrapp
           cordova platform add android@13.0.0
-          cordova plugin add cordova-plugin-android-permissions cordova-plugin-file cordova-plugin-file-transfer cordova-plugin-statusbar
+          cordova plugin add cordova-plugin-android-permissions
+          cordova plugin add cordova-plugin-file
+          cordova plugin add cordova-plugin-file-transfer
+          cordova plugin add cordova-plugin-statusbar
 
-      - name: Install Notification & Location Plugins
+      - name: Install Notification Plugin
         env:
           USE_NOTIFICATION: ${{ github.event.client_payload.use_notification }}
         run: |
-          USE_LOC=$(python3 -c "import json; d=json.load(open('user_data.json')); print('true' if d.get('use_location') else 'false')" || echo "false")
-          cd xtrapp
           if [ "$USE_NOTIFICATION" = "true" ]; then
+            cd xtrapp
             cordova plugin add cordova-plugin-local-notification-12
-          fi
-          if [ "$USE_LOC" = "true" ]; then
-            cordova plugin add cordova-plugin-geolocation --variable GPS_REQUIRED="false"
           fi
 
       - name: Process Code & Inject Safe Magic 🚨
@@ -132,7 +130,6 @@ jobs:
           else:
               status_script = "StatusBar.overlaysWebView(false); StatusBar.backgroundColorByHexString('" + status_color + "'); StatusBar.styleLightContent();"
 
-          # হার্ডওয়্যার ব্যাক বাটন নেভিগেশন ও ডাবল ট্যাপ এক্সিট
           back_script = ""
           if use_back_nav and use_double_back_exit:
               back_script = """
@@ -210,7 +207,6 @@ jobs:
               }, false);
               """
 
-          # স্মার্ট ছবি, ভিডিও, PDF ও blob/data ডাউনলোড ইন্টারসেপ্টর
           download_script = ""
           if enable_downloads:
               file_dl_flag = 'true' if use_file_download else 'false'
@@ -351,10 +347,8 @@ jobs:
           with open(config_path, 'w', encoding='utf-8') as f:
               f.write(config)
 
-          # 🚨 ধাপ ১: আগে cordova prepare android চালিয়ে ফাইলগুলো জেনারেট করা হচ্ছে
           subprocess.run(['cordova', 'prepare', 'android'], cwd='xtrapp', check=True)
 
-          # 🚨 ধাপ ২: এখন সরাসরি জেনারেট হওয়া AndroidManifest.xml-এ মিসিং পারমিশন বসানো হচ্ছে (কখনো কনফ্লিক্ট বা এরর হবে না!)
           manifest_files = glob.glob('xtrapp/platforms/android/app/src/main/AndroidManifest.xml')
           if manifest_files:
               mf_path = manifest_files[0]
@@ -391,7 +385,6 @@ jobs:
                   with open(mf_path, 'w', encoding='utf-8') as f:
                       f.write(mf_xml)
 
-          # 🚨 ধাপ ৩: MainActivity.java-তে নেটিভ ফ্ল্যাগ, ১০০% গ্যারান্টিড পারমিশন পপআপ ও ছবি-ভিডিও ডাউনলোডার ইনজেকশন
           main_activities = glob.glob('xtrapp/platforms/android/app/src/main/java/**/MainActivity.java', recursive=True)
           if main_activities:
               act_file = main_activities[0]
@@ -410,224 +403,224 @@ jobs:
               pre_load_inject = ""
               if enable_downloads:
                   pre_load_inject += r"""
-        init();
-        if (appView != null && appView.getView() instanceof android.webkit.WebView) {
-            final android.webkit.WebView wv = (android.webkit.WebView) appView.getView();
-            wv.addJavascriptInterface(new XtrDownloaderBridge(wv), "XtrDownloader");
-            wv.setDownloadListener(new android.webkit.DownloadListener() {
-                @Override
-                public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
-                    if (url == null) return;
-                    if (url.startsWith("data:")) {
-                        saveBase64ToDownloads(url, null, mimetype);
-                        return;
-                    }
-                    if (url.startsWith("blob:")) {
-                        final String safeUrl = url.replace("'", "\\'");
-                        String js = "javascript:(function(){fetch('" + safeUrl + "').then(function(r){return r.blob();}).then(function(b){var rd=new FileReader();rd.onloadend=function(){if(window.XtrDownloader)window.XtrDownloader.saveBase64(rd.result,'',b.type||'');};rd.readAsDataURL(b);});})();";
-                        wv.evaluateJavascript(js, null);
-                        return;
-                    }
-                    startNativeDownload(url, userAgent, contentDisposition, mimetype, null);
-                }
-            });
-        }
-"""
+                  init();
+                  if (appView != null && appView.getView() instanceof android.webkit.WebView) {
+                      final android.webkit.WebView wv = (android.webkit.WebView) appView.getView();
+                      wv.addJavascriptInterface(new XtrDownloaderBridge(wv), "XtrDownloader");
+                      wv.setDownloadListener(new android.webkit.DownloadListener() {
+                          @Override
+                          public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
+                              if (url == null) return;
+                              if (url.startsWith("data:")) {
+                                  saveBase64ToDownloads(url, null, mimetype);
+                                  return;
+                              }
+                              if (url.startsWith("blob:")) {
+                                  final String safeUrl = url.replace("'", "\\'");
+                                  String js = "javascript:(function(){fetch('" + safeUrl + "').then(function(r){return r.blob();}).then(function(b){var rd=new FileReader();rd.onloadend=function(){if(window.XtrDownloader)window.XtrDownloader.saveBase64(rd.result,'',b.type||'');};rd.readAsDataURL(b);});})();";
+                                  wv.evaluateJavascript(js, null);
+                                  return;
+                              }
+                              startNativeDownload(url, userAgent, contentDisposition, mimetype, null);
+                          }
+                      });
+                  }
+                  """
               if use_cam or use_mic or use_storage or use_loc or use_notif:
                   pre_load_inject += f"""
-        requestXtrPermissions({str(use_cam).lower()}, {str(use_mic).lower()}, {str(use_storage).lower()}, {str(use_loc).lower()}, {str(use_notif).lower()});
-"""
+                  requestXtrPermissions({str(use_cam).lower()}, {str(use_mic).lower()}, {str(use_storage).lower()}, {str(use_loc).lower()}, {str(use_notif).lower()});
+                  """
 
               if pre_load_inject and 'loadUrl(launchUrl);' in java_content:
                   java_content = java_content.replace('loadUrl(launchUrl);', pre_load_inject + '\n        loadUrl(launchUrl);')
 
               if enable_downloads or use_cam or use_mic or use_storage or use_loc or use_notif:
                   helper_methods = r"""
-    private void requestXtrPermissions(boolean cam, boolean mic, boolean storage, boolean loc, boolean notif) {
-        if (android.os.Build.VERSION.SDK_INT < 23) return;
-        java.util.List<String> list = new java.util.ArrayList<>();
-        if (cam && checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            list.add(android.Manifest.permission.CAMERA);
-        }
-        if (mic && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            list.add(android.Manifest.permission.RECORD_AUDIO);
-        }
-        if (loc) {
-            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                list.add(android.Manifest.permission.ACCESS_FINE_LOCATION);
-            }
-            if (checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                list.add(android.Manifest.permission.ACCESS_COARSE_LOCATION);
-            }
-        }
-        if (storage) {
-            if (android.os.Build.VERSION.SDK_INT >= 33) {
-                if (checkSelfPermission("android.permission.READ_MEDIA_IMAGES") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                    list.add("android.permission.READ_MEDIA_IMAGES");
-                }
-                if (checkSelfPermission("android.permission.READ_MEDIA_VIDEO") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                    list.add("android.permission.READ_MEDIA_VIDEO");
-                }
-            } else {
-                if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                    list.add(android.Manifest.permission.READ_EXTERNAL_STORAGE);
-                }
-                if (android.os.Build.VERSION.SDK_INT < 29 && checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                    list.add(android.Manifest.permission.WRITE_EXTERNAL_STORAGE);
-                }
-            }
-        }
-        if (notif && android.os.Build.VERSION.SDK_INT >= 33) {
-            if (checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                list.add("android.permission.POST_NOTIFICATIONS");
-            }
-        }
-        if (!list.isEmpty()) {
-            requestPermissions(list.toArray(new String[0]), 101);
-        }
-    }
+                  private void requestXtrPermissions(boolean cam, boolean mic, boolean storage, boolean loc, boolean notif) {
+                      if (android.os.Build.VERSION.SDK_INT < 23) return;
+                      java.util.List<String> list = new java.util.ArrayList<>();
+                      if (cam && checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                          list.add(android.Manifest.permission.CAMERA);
+                      }
+                      if (mic && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                          list.add(android.Manifest.permission.RECORD_AUDIO);
+                      }
+                      if (loc) {
+                          if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                              list.add(android.Manifest.permission.ACCESS_FINE_LOCATION);
+                          }
+                          if (checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                              list.add(android.Manifest.permission.ACCESS_COARSE_LOCATION);
+                          }
+                      }
+                      if (storage) {
+                          if (android.os.Build.VERSION.SDK_INT >= 33) {
+                              if (checkSelfPermission("android.permission.READ_MEDIA_IMAGES") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                  list.add("android.permission.READ_MEDIA_IMAGES");
+                              }
+                              if (checkSelfPermission("android.permission.READ_MEDIA_VIDEO") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                  list.add("android.permission.READ_MEDIA_VIDEO");
+                              }
+                          } else {
+                              if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                  list.add(android.Manifest.permission.READ_EXTERNAL_STORAGE);
+                              }
+                              if (android.os.Build.VERSION.SDK_INT < 29 && checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                  list.add(android.Manifest.permission.WRITE_EXTERNAL_STORAGE);
+                              }
+                          }
+                      }
+                      if (notif && android.os.Build.VERSION.SDK_INT >= 33) {
+                          if (checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                              list.add("android.permission.POST_NOTIFICATIONS");
+                          }
+                      }
+                      if (!list.isEmpty()) {
+                          requestPermissions(list.toArray(new String[0]), 101);
+                      }
+                  }
 
-    private class XtrDownloaderBridge {
-        private final android.webkit.WebView webView;
-        XtrDownloaderBridge(android.webkit.WebView wv) { this.webView = wv; }
+                  private class XtrDownloaderBridge {
+                      private final android.webkit.WebView webView;
+                      XtrDownloaderBridge(android.webkit.WebView wv) { this.webView = wv; }
 
-        @android.webkit.JavascriptInterface
-        public void downloadUrl(final String url, final String fileName) {
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    String ua = webView.getSettings().getUserAgentString();
-                    startNativeDownload(url, ua, null, null, fileName);
-                }
-            });
-        }
+                      @android.webkit.JavascriptInterface
+                      public void downloadUrl(final String url, final String fileName) {
+                          runOnUiThread(new Runnable() {
+                              @Override
+                              public void run() {
+                                  String ua = webView.getSettings().getUserAgentString();
+                                  startNativeDownload(url, ua, null, null, fileName);
+                              }
+                          });
+                      }
 
-        @android.webkit.JavascriptInterface
-        public void saveBase64(final String dataUrl, final String fileName, final String mimeType) {
-            new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    saveBase64ToDownloads(dataUrl, fileName, mimeType);
-                }
-            }).start();
-        }
-    }
+                      @android.webkit.JavascriptInterface
+                      public void saveBase64(final String dataUrl, final String fileName, final String mimeType) {
+                          new Thread(new Runnable() {
+                              @Override
+                              public void run() {
+                                  saveBase64ToDownloads(dataUrl, fileName, mimeType);
+                              }
+                          }).start();
+                      }
+                  }
 
-    private void startNativeDownload(String url, String userAgent, String contentDisposition, String mimetype, String customFileName) {
-        try {
-            String fileName = (customFileName != null && !customFileName.trim().isEmpty())
-                    ? customFileName.trim().replaceAll("[^a-zA-Z0-9._-]", "_")
-                    : android.webkit.URLUtil.guessFileName(url, contentDisposition, mimetype);
-            if (fileName == null || fileName.isEmpty()) {
-                fileName = "download_" + System.currentTimeMillis();
-            }
-            if ((mimetype == null || mimetype.isEmpty()) && fileName.contains(".")) {
-                String ext = fileName.substring(fileName.lastIndexOf(".") + 1).toLowerCase();
-                mimetype = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext);
-            }
+                  private void startNativeDownload(String url, String userAgent, String contentDisposition, String mimetype, String customFileName) {
+                      try {
+                          String fileName = (customFileName != null && !customFileName.trim().isEmpty())
+                                  ? customFileName.trim().replaceAll("[^a-zA-Z0-9._-]", "_")
+                                  : android.webkit.URLUtil.guessFileName(url, contentDisposition, mimetype);
+                          if (fileName == null || fileName.isEmpty()) {
+                              fileName = "download_" + System.currentTimeMillis();
+                          }
+                          if ((mimetype == null || mimetype.isEmpty()) && fileName.contains(".")) {
+                              String ext = fileName.substring(fileName.lastIndexOf(".") + 1).toLowerCase();
+                              mimetype = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext);
+                          }
 
-            android.app.DownloadManager.Request req = new android.app.DownloadManager.Request(android.net.Uri.parse(url));
-            String cookies = android.webkit.CookieManager.getInstance().getCookie(url);
-            if (cookies != null) req.addRequestHeader("Cookie", cookies);
-            if (userAgent != null) req.addRequestHeader("User-Agent", userAgent);
-            req.setTitle(fileName);
-            req.setDescription("Downloading file...");
-            if (mimetype != null && !mimetype.isEmpty()) req.setMimeType(mimetype);
-            if (android.os.Build.VERSION.SDK_INT < 29) req.allowScanningByMediaScanner();
-            req.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-            req.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, fileName);
+                          android.app.DownloadManager.Request req = new android.app.DownloadManager.Request(android.net.Uri.parse(url));
+                          String cookies = android.webkit.CookieManager.getInstance().getCookie(url);
+                          if (cookies != null) req.addRequestHeader("Cookie", cookies);
+                          if (userAgent != null) req.addRequestHeader("User-Agent", userAgent);
+                          req.setTitle(fileName);
+                          req.setDescription("Downloading file...");
+                          if (mimetype != null && !mimetype.isEmpty()) req.setMimeType(mimetype);
+                          if (android.os.Build.VERSION.SDK_INT < 29) req.allowScanningByMediaScanner();
+                          req.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                          req.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, fileName);
 
-            android.app.DownloadManager dm = (android.app.DownloadManager) getSystemService(android.content.Context.DOWNLOAD_SERVICE);
-            if (dm != null) {
-                dm.enqueue(req);
-                android.widget.Toast.makeText(this, "Downloading " + fileName, android.widget.Toast.LENGTH_SHORT).show();
-            }
-        } catch (Exception e) {
-            android.widget.Toast.makeText(this, "Download failed!", android.widget.Toast.LENGTH_SHORT).show();
-        }
-    }
+                          android.app.DownloadManager dm = (android.app.DownloadManager) getSystemService(android.content.Context.DOWNLOAD_SERVICE);
+                          if (dm != null) {
+                              dm.enqueue(req);
+                              android.widget.Toast.makeText(this, "Downloading " + fileName, android.widget.Toast.LENGTH_SHORT).show();
+                          }
+                      } catch (Exception e) {
+                          android.widget.Toast.makeText(this, "Download failed!", android.widget.Toast.LENGTH_SHORT).show();
+                      }
+                  }
 
-    private void saveBase64ToDownloads(String dataUrl, String fileName, String mimeType) {
-        try {
-            if (dataUrl == null || !dataUrl.contains(",")) return;
-            int comma = dataUrl.indexOf(",");
-            String header = dataUrl.substring(0, comma);
-            String base64Body = dataUrl.substring(comma + 1);
-            if ((mimeType == null || mimeType.isEmpty()) && header.contains(":") && header.contains(";")) {
-                mimeType = header.substring(header.indexOf(":") + 1, header.indexOf(";"));
-            }
-            if (mimeType == null) mimeType = "application/octet-stream";
+                  private void saveBase64ToDownloads(String dataUrl, String fileName, String mimeType) {
+                      try {
+                          if (dataUrl == null || !dataUrl.contains(",")) return;
+                          int comma = dataUrl.indexOf(",");
+                          String header = dataUrl.substring(0, comma);
+                          String base64Body = dataUrl.substring(comma + 1);
+                          if ((mimeType == null || mimeType.isEmpty()) && header.contains(":") && header.contains(";")) {
+                              mimeType = header.substring(header.indexOf(":") + 1, header.indexOf(";"));
+                          }
+                          if (mimeType == null) mimeType = "application/octet-stream";
 
-            String ext = ".bin";
-            if (mimeType.contains("png")) ext = ".png";
-            else if (mimeType.contains("jpeg") || mimeType.contains("jpg")) ext = ".jpg";
-            else if (mimeType.contains("webp")) ext = ".webp";
-            else if (mimeType.contains("gif")) ext = ".gif";
-            else if (mimeType.contains("mp4")) ext = ".mp4";
-            else if (mimeType.contains("webm")) ext = ".webm";
-            else if (mimeType.contains("mpeg") || mimeType.contains("mp3")) ext = ".mp3";
-            else if (mimeType.contains("pdf")) ext = ".pdf";
-            else if (mimeType.contains("zip")) ext = ".zip";
+                          String ext = ".bin";
+                          if (mimeType.contains("png")) ext = ".png";
+                          else if (mimeType.contains("jpeg") || mimeType.contains("jpg")) ext = ".jpg";
+                          else if (mimeType.contains("webp")) ext = ".webp";
+                          else if (mimeType.contains("gif")) ext = ".gif";
+                          else if (mimeType.contains("mp4")) ext = ".mp4";
+                          else if (mimeType.contains("webm")) ext = ".webm";
+                          else if (mimeType.contains("mpeg") || mimeType.contains("mp3")) ext = ".mp3";
+                          else if (mimeType.contains("pdf")) ext = ".pdf";
+                          else if (mimeType.contains("zip")) ext = ".zip";
 
-            String finalName = (fileName != null && !fileName.trim().isEmpty())
-                    ? fileName.trim().replaceAll("[^a-zA-Z0-9._-]", "_")
-                    : "xtr_" + System.currentTimeMillis() + ext;
-            if (!finalName.contains(".")) finalName += ext;
+                          String finalName = (fileName != null && !fileName.trim().isEmpty())
+                                  ? fileName.trim().replaceAll("[^a-zA-Z0-9._-]", "_")
+                                  : "xtr_" + System.currentTimeMillis() + ext;
+                          if (!finalName.contains(".")) finalName += ext;
 
-            byte[] dataBytes = android.util.Base64.decode(base64Body, android.util.Base64.DEFAULT);
+                          byte[] dataBytes = android.util.Base64.decode(base64Body, android.util.Base64.DEFAULT);
 
-            if (android.os.Build.VERSION.SDK_INT >= 29) {
-                android.content.ContentValues values = new android.content.ContentValues();
-                values.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, finalName);
-                values.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mimeType);
+                          if (android.os.Build.VERSION.SDK_INT >= 29) {
+                              android.content.ContentValues values = new android.content.ContentValues();
+                              values.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, finalName);
+                              values.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mimeType);
 
-                android.net.Uri collection;
-                if (mimeType.startsWith("image/")) {
-                    values.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_PICTURES);
-                    collection = android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
-                } else if (mimeType.startsWith("video/")) {
-                    values.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_MOVIES);
-                    collection = android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
-                } else {
-                    values.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS);
-                    collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI;
-                }
+                              android.net.Uri collection;
+                              if (mimeType.startsWith("image/")) {
+                                  values.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_PICTURES);
+                                  collection = android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+                              } else if (mimeType.startsWith("video/")) {
+                                  values.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_MOVIES);
+                                  collection = android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
+                              } else {
+                                  values.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS);
+                                  collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI;
+                              }
 
-                android.net.Uri uri = getContentResolver().insert(collection, values);
-                if (uri != null) {
-                    java.io.OutputStream os = getContentResolver().openOutputStream(uri);
-                    if (os != null) {
-                        os.write(dataBytes);
-                        os.close();
-                    }
-                }
-            } else {
-                java.io.File dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
-                if (!dir.exists()) dir.mkdirs();
-                java.io.File outFile = new java.io.File(dir, finalName);
-                java.io.FileOutputStream fos = new java.io.FileOutputStream(outFile);
-                fos.write(dataBytes);
-                fos.close();
-                android.media.MediaScannerConnection.scanFile(this, new String[]{outFile.getAbsolutePath()}, new String[]{mimeType}, null);
-            }
+                              android.net.Uri uri = getContentResolver().insert(collection, values);
+                              if (uri != null) {
+                                  java.io.OutputStream os = getContentResolver().openOutputStream(uri);
+                                  if (os != null) {
+                                      os.write(dataBytes);
+                                      os.close();
+                                  }
+                              }
+                          } else {
+                              java.io.File dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+                              if (!dir.exists()) dir.mkdirs();
+                              java.io.File outFile = new java.io.File(dir, finalName);
+                              java.io.FileOutputStream fos = new java.io.FileOutputStream(outFile);
+                              fos.write(dataBytes);
+                              fos.close();
+                              android.media.MediaScannerConnection.scanFile(this, new String[]{outFile.getAbsolutePath()}, new String[]{mimeType}, null);
+                          }
 
-            final String savedMsg = "Saved: " + finalName;
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    android.widget.Toast.makeText(MainActivity.this, savedMsg, android.widget.Toast.LENGTH_SHORT).show();
-                }
-            });
-        } catch (Exception e) {
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    android.widget.Toast.makeText(MainActivity.this, "Failed to save file!", android.widget.Toast.LENGTH_SHORT).show();
-                }
-            });
-        }
-    }
-"""
+                          final String savedMsg = "Saved: " + finalName;
+                          runOnUiThread(new Runnable() {
+                              @Override
+                              public void run() {
+                                  android.widget.Toast.makeText(MainActivity.this, savedMsg, android.widget.Toast.LENGTH_SHORT).show();
+                              }
+                          });
+                      } catch (Exception e) {
+                          runOnUiThread(new Runnable() {
+                              @Override
+                              public void run() {
+                                  android.widget.Toast.makeText(MainActivity.this, "Failed to save file!", android.widget.Toast.LENGTH_SHORT).show();
+                              }
+                          });
+                      }
+                  }
+                  """
                   last_brace = java_content.rfind('}')
                   if last_brace != -1:
                       java_content = java_content[:last_brace] + helper_methods + '\n}\n'
@@ -645,8 +638,7 @@ jobs:
           echo "org.gradle.daemon=false" >> platforms/android/gradle.properties
           echo "org.gradle.parallel=true" >> platforms/android/gradle.properties
           echo "org.gradle.caching=true" >> platforms/android/gradle.properties
-          echo "org.gradle.configureondemand=true" >> platforms/android/gradle.properties
-          echo "org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8" >> platforms/android/gradle.properties
+          echo "org.gradle.jvmargs=-Xmx2560m -Dfile.encoding=UTF-8" >> platforms/android/gradle.properties
           cordova compile android --debug
 
       - name: Release Final APK

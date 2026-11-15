@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: '20'
 
-      # 🚨 সুপার-ফাস্ট স্পিড: প্রথম বিল্ডের পর থেকে Gradle, Android Libs ও NPM ক্যাশ থাকবে!
+      # 🚨 সুপার-ফাস্ট স্পিড: প্রথম বিল্ডের পর থেকে Gradle ও NPM ক্যাশ থাকবে!
       - name: Cache Gradle & NPM
         uses: actions/cache@v4
         with:
@@ -31,9 +31,9 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
             ~/.npm
-          key: xtr-apk-builder-v1-${{ runner.os }}
+          key: xtr-apk-builder-v2-${{ runner.os }}
           restore-keys: |
-            xtr-apk-builder-v1-
+            xtr-apk-builder-v2-
 
       - name: Install Cordova
         run: npm install -g cordova --prefer-offline --no-audit --no-fund
@@ -51,8 +51,7 @@ jobs:
           cordova create xtrapp "$PKG" "$APP"
           cd xtrapp
           cordova platform add android@13.0.0
-          # 🚨 ৪টি প্লাগইন আলাদা না চালিয়ে একসাথে ইনস্টল (সময় বাঁচবে!)
-          cordova plugin add cordova-plugin-android-permissions cordova-plugin-file cordova-plugin-file-transfer cordova-plugin-statusbar --nosave
+          cordova plugin add cordova-plugin-android-permissions cordova-plugin-file cordova-plugin-file-transfer cordova-plugin-statusbar
 
       - name: Install Notification & Location Plugins
         env:
@@ -61,16 +60,16 @@ jobs:
           USE_LOC=$(python3 -c "import json; d=json.load(open('user_data.json')); print('true' if d.get('use_location') else 'false')" || echo "false")
           cd xtrapp
           if [ "$USE_NOTIFICATION" = "true" ]; then
-            cordova plugin add cordova-plugin-local-notification-12 --nosave
+            cordova plugin add cordova-plugin-local-notification-12
           fi
           if [ "$USE_LOC" = "true" ]; then
-            cordova plugin add cordova-plugin-geolocation --variable GPS_REQUIRED="false" --nosave
+            cordova plugin add cordova-plugin-geolocation --variable GPS_REQUIRED="false"
           fi
 
       - name: Process Code & Inject Safe Magic 🚨
         run: |
           cat << 'EOF' > process_app.py
-          import os, json, base64, re, urllib.parse, glob
+          import os, json, base64, re, urllib.parse, glob, subprocess
 
           def decode_b64_safe(b64_str):
               pad = len(b64_str) % 4
@@ -211,7 +210,7 @@ jobs:
               }, false);
               """
 
-          # 🚨 স্মার্ট ছবি, ভিডিও, PDF ও blob/data ডাউনলোড ইন্টারসেপ্টর (Native XtrDownloader Bridge সহ)
+          # স্মার্ট ছবি, ভিডিও, PDF ও blob/data ডাউনলোড ইন্টারসেপ্টর
           download_script = ""
           if enable_downloads:
               file_dl_flag = 'true' if use_file_download else 'false'
@@ -279,8 +278,8 @@ jobs:
 
           permission_script = """<script>document.addEventListener('deviceready', function() { if(window.StatusBar) { """ + status_script + """ } if (""" + notif_str + """) { setTimeout(function() { if (window.cordova && cordova.plugins && cordova.plugins.notification) { cordova.plugins.notification.local.requestPermission(function(granted) {}); } }, 1200); } """ + back_script + download_script + offline_script + """ }, false);</script>"""
           
-          if '</body>' in html_data:
-              html_data = html_data.replace('</body>', offline_dom + permission_script + '\n</body>')
+          if '</body>' in html_data.lower():
+              html_data = re.sub(r'</body>', lambda m: offline_dom + permission_script + '\n</body>', html_data, count=1, flags=re.IGNORECASE)
           else:
               html_data += offline_dom + permission_script
 
@@ -343,39 +342,56 @@ jobs:
           if enable_downloads:
               config = config.replace('</widget>', '    <allow-intent href="*" />\n</widget>')
 
-          # 🚨 ম্যানিফেস্টে সব সিলেক্ট করা পারমিশন সঠিকভাবে ডিক্লেয়ার করা হচ্ছে (নাহলে Android পপআপ দেয় না!)
-          manifest_perms = ""
-          if use_cam:
-              manifest_perms += '    <uses-permission android:name="android.permission.CAMERA" />\n'
-              manifest_perms += '    <uses-feature android:name="android.hardware.camera" android:required="false" />\n'
-              manifest_perms += '    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />\n'
-          if use_mic:
-              manifest_perms += '    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n'
-              manifest_perms += '    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n'
-          if enable_downloads:
-              manifest_perms += '    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n'
-              manifest_perms += '    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n'
-              manifest_perms += '    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\n'
-              manifest_perms += '    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />\n'
-              manifest_perms += '    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />\n'
-          if use_loc:
-              manifest_perms += '    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n'
-              manifest_perms += '    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n'
-          if use_notif:
-              manifest_perms += '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n'
-
           p_xml = '<platform name="android">\n'
           theme = "@style/Theme.AppCompat.NoActionBar" if use_fullscreen else "@style/Theme.AppCompat.Light.NoActionBar"
           p_xml += f'  <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application"><application android:theme="{theme}" android:usesCleartextTraffic="true" /></edit-config>\n'
-          if manifest_perms:
-              p_xml += f'  <config-file target="AndroidManifest.xml" parent="/manifest">\n{manifest_perms}  </config-file>\n'
           p_xml += '</platform>'
 
           config = config.replace('</widget>', p_xml + '\n</widget>')
           with open(config_path, 'w', encoding='utf-8') as f:
               f.write(config)
 
-          # 🚨 MainActivity.java-তে নেটিভ ফ্ল্যাগ, ১০০% গ্যারান্টিড পারমিশন পপআপ ও ছবি-ভিডিও ডাউনলোডার ইনজেকশন
+          # 🚨 ধাপ ১: আগে cordova prepare android চালিয়ে ফাইলগুলো জেনারেট করা হচ্ছে
+          subprocess.run(['cordova', 'prepare', 'android'], cwd='xtrapp', check=True)
+
+          # 🚨 ধাপ ২: এখন সরাসরি জেনারেট হওয়া AndroidManifest.xml-এ মিসিং পারমিশন বসানো হচ্ছে (কখনো কনফ্লিক্ট বা এরর হবে না!)
+          manifest_files = glob.glob('xtrapp/platforms/android/app/src/main/AndroidManifest.xml')
+          if manifest_files:
+              mf_path = manifest_files[0]
+              with open(mf_path, 'r', encoding='utf-8') as f:
+                  mf_xml = f.read()
+
+              needed_tags = []
+              if use_cam:
+                  needed_tags.append(('android.permission.CAMERA', '<uses-permission android:name="android.permission.CAMERA" />'))
+                  needed_tags.append(('android.hardware.camera', '<uses-feature android:name="android.hardware.camera" android:required="false" />'))
+                  needed_tags.append(('android.hardware.camera.autofocus', '<uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />'))
+              if use_mic:
+                  needed_tags.append(('android.permission.RECORD_AUDIO', '<uses-permission android:name="android.permission.RECORD_AUDIO" />'))
+                  needed_tags.append(('android.permission.MODIFY_AUDIO_SETTINGS', '<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />'))
+              if enable_downloads:
+                  needed_tags.append(('android.permission.READ_EXTERNAL_STORAGE', '<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />'))
+                  needed_tags.append(('android.permission.WRITE_EXTERNAL_STORAGE', '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />'))
+                  needed_tags.append(('android.permission.READ_MEDIA_IMAGES', '<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />'))
+                  needed_tags.append(('android.permission.READ_MEDIA_VIDEO', '<uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />'))
+                  needed_tags.append(('android.permission.READ_MEDIA_AUDIO', '<uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />'))
+              if use_loc:
+                  needed_tags.append(('android.permission.ACCESS_FINE_LOCATION', '<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />'))
+                  needed_tags.append(('android.permission.ACCESS_COARSE_LOCATION', '<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />'))
+              if use_notif:
+                  needed_tags.append(('android.permission.POST_NOTIFICATIONS', '<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />'))
+
+              insert_block = ""
+              for check_key, tag_line in needed_tags:
+                  if check_key not in mf_xml:
+                      insert_block += f"    {tag_line}\n"
+
+              if insert_block and '<application' in mf_xml:
+                  mf_xml = mf_xml.replace('<application', insert_block + '    <application', 1)
+                  with open(mf_path, 'w', encoding='utf-8') as f:
+                      f.write(mf_xml)
+
+          # 🚨 ধাপ ৩: MainActivity.java-তে নেটিভ ফ্ল্যাগ, ১০০% গ্যারান্টিড পারমিশন পপআপ ও ছবি-ভিডিও ডাউনলোডার ইনজেকশন
           main_activities = glob.glob('xtrapp/platforms/android/app/src/main/java/**/MainActivity.java', recursive=True)
           if main_activities:
               act_file = main_activities[0]
@@ -425,7 +441,8 @@ jobs:
               if pre_load_inject and 'loadUrl(launchUrl);' in java_content:
                   java_content = java_content.replace('loadUrl(launchUrl);', pre_load_inject + '\n        loadUrl(launchUrl);')
 
-              helper_methods = r"""
+              if enable_downloads or use_cam or use_mic or use_storage or use_loc or use_notif:
+                  helper_methods = r"""
     private void requestXtrPermissions(boolean cam, boolean mic, boolean storage, boolean loc, boolean notif) {
         if (android.os.Build.VERSION.SDK_INT < 23) return;
         java.util.List<String> list = new java.util.ArrayList<>();
@@ -611,9 +628,9 @@ jobs:
         }
     }
 """
-              last_brace = java_content.rfind('}')
-              if last_brace != -1:
-                  java_content = java_content[:last_brace] + helper_methods + '\n}\n'
+                  last_brace = java_content.rfind('}')
+                  if last_brace != -1:
+                      java_content = java_content[:last_brace] + helper_methods + '\n}\n'
 
               with open(act_file, 'w', encoding='utf-8') as f:
                   f.write(java_content)
@@ -629,8 +646,8 @@ jobs:
           echo "org.gradle.parallel=true" >> platforms/android/gradle.properties
           echo "org.gradle.caching=true" >> platforms/android/gradle.properties
           echo "org.gradle.configureondemand=true" >> platforms/android/gradle.properties
-          echo "org.gradle.jvmargs=-Xmx4096m -XX:+UseParallelGC -Dfile.encoding=UTF-8" >> platforms/android/gradle.properties
-          cordova build android --debug
+          echo "org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8" >> platforms/android/gradle.properties
+          cordova compile android --debug
 
       - name: Release Final APK
         env:

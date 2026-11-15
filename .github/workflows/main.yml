@@ -635,10 +635,7 @@ jobs:
         run: |
           cd xtrapp
           mkdir -p platforms/android
-          echo "org.gradle.daemon=false" >> platforms/android/gradle.properties
-          echo "org.gradle.parallel=true" >> platforms/android/gradle.properties
-          echo "org.gradle.caching=true" >> platforms/android/gradle.properties
-          echo "org.gradle.jvmargs=-Xmx2560m -Dfile.encoding=UTF-8" >> platforms/android/gradle.properties
+          printf "\norg.gradle.daemon=false\norg.gradle.parallel=true\norg.gradle.caching=true\norg.gradle.jvmargs=-Xmx2560m -Dfile.encoding=UTF-8\n" >> platforms/android/gradle.properties
           cordova compile android --debug
 
       - name: Release Final APK

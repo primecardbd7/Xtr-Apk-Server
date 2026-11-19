@@ -643,7 +643,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APP_NAME: ${{ github.event.client_payload.app_name }}
         run: |
-          SAFE_NAME=$(echo "$APP_NAME" | tr -d ' ' | tr -d '"' | tr -d "'")
+          SAFE_NAME=$(echo "$APP_NAME" | tr -cd 'A-Za-z0-9_-')
+          if [ -z "$SAFE_NAME" ]; then
+            SAFE_NAME="XtrApp"
+          fi
           gh release delete "$SAFE_NAME" --yes || true
           git push --delete origin "$SAFE_NAME" || true
           gh release create "$SAFE_NAME" xtrapp/platforms/android/app/build/outputs/apk/debug/app-debug.apk -t "$SAFE_NAME" -n "Latest Build"
